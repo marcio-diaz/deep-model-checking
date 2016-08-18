@@ -144,7 +144,7 @@ if __name__ == "__main__":
         state = state.execute_trivial()
         root = StateNode(None, state)
         print("{} {}".format(state.pos[0], state.pos[1]))        
-        best_action, reward = mcts(root, 50000)
+        best_action, reward = mcts(root, 7000)
         print("\nbest action = {} reward = {}".format(best_action, reward))
         state = state.perform(best_action)
 

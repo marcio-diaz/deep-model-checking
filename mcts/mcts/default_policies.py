@@ -43,17 +43,18 @@ def random_terminal_roll_out(state_node):
     return _roll_out(state_node, stop_terminal)
 
 
-def random_k_terminal_roll_out(state_node, k=1):
+def random_k_terminal_roll_out(state_node, k=11):
 
     def stop_terminal(state):
         return state.is_terminal()
 
     s = 0.0
+#    r = []
     for i in range(k):
         s += _roll_out(state_node, stop_terminal)
-
+#        r.append(_roll_out(state_node, stop_terminal))
+#    return max(r)
     return s/k
-    
 
 def _roll_out(state_node, stopping_criterion):
     reward = 0

@@ -51,8 +51,23 @@ class ProgramState(object):
         # thus we have one action for each thread
         ts = [t for t in ts if t != None]
         self.actions = [idx for idx in range(len(ts))]
-        
 
+
+    def execute_trivial(self):
+        gv2, ts2, ast, ce = self.pos        
+        i = 0
+        while i < len(ts2):
+#            print i
+            ug = False
+            while not ug:
+                gv2, t, ce, ug = process_line(gv2, i, ts2, ast, True)
+                if t != None and ce == 0:
+                    ts2[i] = thread_copy(t)
+                else:
+                    break
+            i += 1
+
+        return ProgramState((gv2, ts2, ast, ce))
 
     def perform(self, action):
         # @ce is a boolean that indicate if the state
@@ -60,9 +75,16 @@ class ProgramState(object):
         gv, ts, ast, ce = self.pos
 #        print("in threads {}\n".format(ts))
         ts2 = threads_copy(ts)
-        gv2, t, ce = process_line(gv.copy(), action, ts2, ast)
-        if t != None and ce == 0:
-            ts2[action] = thread_copy(t)
+        gv2 = gv.copy()
+        ug = False
+
+        while not ug:
+            gv2, t, ce, ug = process_line(gv2, action, ts2, ast, False)
+            if t != None and ce == 0:
+                ts2[action] = thread_copy(t)
+            else:
+                break
+            
 #        print("out threads {}\n".format(ts2))           
         return ProgramState((gv2, ts2, ast, ce))
 
@@ -84,7 +106,7 @@ class ProgramState(object):
 #            return 0
             #print("reward -10")            
 #            return (-(46368-i)-(46368-j))*100
-            return max(j, i)/21.0
+            return max(j, i)/46368.0
 
     def is_terminal(self):
         if self.pos[3] != 0:
@@ -119,19 +141,11 @@ if __name__ == "__main__":
 
     state = ProgramState((gv, ts, ast, False))
     while not state.is_terminal():
+        state = state.execute_trivial()
         root = StateNode(None, state)
-        print("{} {}".format(state.pos[0], \
-#                                  [t[2] for t in state.pos[1]],
-                                state.pos[1]))
-#                                state.pos[1][0][1][0]))
-        best_action, reward = mcts(root, 10000)
-        print("\nreward = {}".format(reward))
-#        if reward > 0.9:
-#            print("Counterexample found :)")
-#            print(state.pos[0])
-#            break
+        print("{} {}".format(state.pos[0], state.pos[1]))        
+        best_action, reward = mcts(root, 50000)
+        print("\nbest action = {} reward = {}".format(best_action, reward))
         state = state.perform(best_action)
-#        if state in root.children:
-#            root = root.children[state]
-#            root.parent = None
 
+    print("{} {}".format(state.pos[0], state.pos[1]))

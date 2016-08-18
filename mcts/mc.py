@@ -7,19 +7,20 @@ def get_value(expr, gv, t_locals):
     if isinstance(expr, c_ast.ID):
         return get_var_value(gv, t_locals, expr.name)
     elif isinstance(expr, c_ast.Constant):
-        return expr.value
+        return expr.value, False # False because we don't touch globals
     elif isinstance(expr, c_ast.ArrayRef):
-        var_name =  "{}{}".format(expr.name, get_var_value(expr.subscript.name, \
-                                                           gv, t_locals))
-        return get_var_value(var_name, gv, t_locals)
+        idx_var_name, is_idx_global = get_var_value(expr.subscript.name, gv, t_locals)
+        var_name =  "{}{}".format(expr.name, idx_var_name)
+        value, is_var_global = get_var_value(var_name, gv, t_locals)
+        return value, (is_idx_global or is_var_global)
     assert False
 
 def get_variable(expr, gv, t_locals):
     if isinstance(expr, c_ast.ArrayRef):
-        return "{}{}".format(expr.name, get_var_value(expr.subscript.name, \
-                                                      gv, t_locals))
+        value, is_global = get_var_value(expr.subscript.name, gv, t_locals)
+        return "{}{}".format(expr.name, value), is_global
     if isinstance(expr, c_ast.ID):
-        return expr.name
+        return expr.name, False
     
     assert False
     
@@ -33,16 +34,21 @@ def eval_bool_expr(expr, gv, t_locals):
         return (eval_bool_expr(expr.left, gv, t_locals) \
                 or eval_bool_expr(expr.right, gv, t_locals))
     else:
-        value1 = int(get_value(expr.left, gv, t_locals))
-        value2 = int(get_value(expr.right, gv, t_locals))
+        value1, is_global1 = get_value(expr.left, gv, t_locals)
+        value2, is_global2 = get_value(expr.right, gv, t_locals)
 #        print "evaluating {} {} {} from {} {}".format(value1, expr.op, value2,
 #                                                      expr.left, expr.right)
+
+        value1 = int(value1)
+        value2 = int(value2)
+        is_global = (is_global1 or is_global2)
+        
         if expr.op == "==":
-            return value1 == value2
+            return value1 == value2, is_global
         if expr.op == "<":
-            return value1 < value2            
+            return value1 < value2, is_global           
         if expr.op == "!=":
-            return value1 != value2            
+            return value1 != value2, is_global            
         assert False
 
 def ggArrayDecl(n):
@@ -80,11 +86,12 @@ def get_func_node(ast, name):
                 return n
 
 
-def process_line(gv, tid, threads, ast):
+def process_line(gv, tid, threads, ast, simulate):
 #    print gv
     t_name, t_asts, t_locals = threads[tid]
     node = t_asts.pop(0)
     res = 0
+    use_global = False
 #    print("Processing: {} of T{}".format(node, t_name))
     
     if isinstance(node, c_ast.Return):
@@ -92,15 +99,19 @@ def process_line(gv, tid, threads, ast):
 #            print("Returning from main")
         if len(t_asts) == 0:
             del threads[tid]
-            return gv, None, 0
+            return gv, None, 0, False
     
     if isinstance(node, c_ast.UnaryOp):
         var = node.expr.name
         if var in t_locals.keys():
             t_locals[var] = int(t_locals[var]) + 1
         else:
-            gv[var] = int(gv[var]) + 1
-
+            use_global = True            
+            if not simulate:
+                gv[var] = int(gv[var]) + 1
+            else:
+                t_asts.insert(0, node)
+                
     if isinstance(node, c_ast.FuncCall):
         function_name = node.name.name
         expr_list = node.args.exprs
@@ -110,6 +121,7 @@ def process_line(gv, tid, threads, ast):
             fnode = get_func_node(ast, fname)
             thread_name = get_variable(node.args.exprs[0].expr, gv, t_locals)
             threads.append(("{}".format(fname, thread_name), [fnode], {}))
+#            use_global = True
             
         if function_name == "pthread_join":
             idx = node.args.exprs[0].subscript.name
@@ -121,14 +133,18 @@ def process_line(gv, tid, threads, ast):
         if function_name == "pthread_exit":
             if len(t_asts) == 0:
                 del threads[tid]
-                return gv, None, 0
+                return gv, None, 0, use_global
                 
         if function_name == "assert":
-            result = eval_bool_expr(expr_list[0], gv, t_locals)
-            if result:
-                return gv, None, -1
-            if not result:
-                return gv, None, 1
+            result, is_global = eval_bool_expr(expr_list[0], gv, t_locals)
+            use_global = use_global or is_global
+            if not simulate:
+                if result:
+                    return gv, None, -1, use_global
+                if not result:
+                    return gv, None, 1, use_global
+            else:
+                t_asts.insert(0, node)
                 
     if isinstance(node, c_ast.FuncDef):
         l = node.body.block_items[:]
@@ -155,7 +171,9 @@ def process_line(gv, tid, threads, ast):
                 t_asts.insert(0, x)
 
     if isinstance(node, c_ast.While):
-        if eval_bool_expr(node.cond, gv, t_locals):
+        cond, is_global = eval_bool_expr(node.cond, gv, t_locals)
+#        use_global = use_global or is_global // I don't care on fib example.
+        if cond:
             t_asts.insert(0, node)
             l = node.stmt.block_items[:]
             l.reverse()
@@ -163,24 +181,35 @@ def process_line(gv, tid, threads, ast):
                 t_asts.insert(0, x)
 
     if isinstance(node, c_ast.Assignment):
-        var_name = get_variable(node.lvalue, gv, t_locals)
-        value = get_value(node.rvalue, gv, t_locals)
-
+        var_name, is_global = get_variable(node.lvalue, gv, t_locals)
+        use_global = (use_global or is_global)
+        value, is_global = get_value(node.rvalue, gv, t_locals)
+        use_global = (use_global or is_global)
+        
         if node.op == "=":
-            gv, t_locals = set_var_value(gv, t_locals, var_name, int(value))
+            if not simulate:
+                gv, t_locals = set_var_value(gv, t_locals, var_name, int(value))
+            else:
+                t_asts.insert(0, node)
+                
         if node.op == "+=":
-            old_value = get_var_value(gv, t_locals, var_name)            
-            gv, t_locals = set_var_value(gv, t_locals, var_name, \
-                                         int(old_value) + int(value))
+            old_value, is_global = get_var_value(gv, t_locals, var_name)
+            value, is_global = get_value(node.rvalue, gv, t_locals)
+            if not simulate:
+                gv, t_locals = set_var_value(gv, t_locals, var_name, \
+                                             int(old_value) + int(value))
+            else:
+                t_asts.insert(0, node)
+                
     t = t_name, t_asts, t_locals
 
-    return gv, t, res
+    return gv, t, res, use_global
 
 def get_var_value(global_vars, local_vars, name):
     if name in local_vars.keys():
-        return local_vars[name]
+        return local_vars[name], False
     if name in global_vars.keys():
-        return global_vars[name]
+        return global_vars[name], True
     assert(False)
 
 def set_var_value(global_vars, local_vars, name, value):

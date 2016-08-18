@@ -15,7 +15,7 @@ class MCTS(object):
         self.default_policy = default_policy
         self.backup = backup
 
-    def __call__(self, root, n=1000):
+    def __call__(self, root, n):
         """
         Run the monte carlo tree search.
 
@@ -29,11 +29,14 @@ class MCTS(object):
         for _ in range(n):
             node = _get_next_node(root, self.tree_policy)
             node.reward = self.default_policy(node)
-            if node.reward > 0:
-                return None, node.reward
+#            print("Reward {} \n".format(node.reward))
+#            print("Tree: \n{}\n{}\n".format(node.state.pos, node.reward))
+#            if node.reward == 1:
+#                return None, node.reward
 #                print("temporal rew {}".format(node.reward))
             self.backup(node)
         r = max([n.q for n in root.children.values()])
+        print([x.q for x in root.children.values()])
         return utils.rand_max(root.children.values(), key=lambda x: x.q).action, r
 
 
@@ -45,6 +48,7 @@ def _expand(state_node):
 def _best_child(state_node, tree_policy):
     best_action_node = utils.rand_max(state_node.children.values(),
                                       key=tree_policy)
+#    print("best child ", best_action_node.action)
 
     return best_action_node.sample_state()
 
@@ -57,4 +61,5 @@ def _get_next_node(state_node, tree_policy):
         else:
 #            print("best child")            
             state_node = _best_child(state_node, tree_policy)
+#    print(state_node.state.pos[0])
     return state_node

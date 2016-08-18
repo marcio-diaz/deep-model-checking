@@ -3,8 +3,47 @@ from itertools import product, chain
 from pycparser import c_parser, c_ast, parse_file, c_generator
 from sys import argv
 
+def get_value(expr, gv, t_locals):
+    if isinstance(expr, c_ast.ID):
+        return get_var_value(gv, t_locals, expr.name)
+    elif isinstance(expr, c_ast.Constant):
+        return expr.value
+    elif isinstance(expr, c_ast.ArrayRef):
+        var_name =  "{}{}".format(expr.name, get_var_value(expr.subscript.name, \
+                                                           gv, t_locals))
+        return get_var_value(var_name, gv, t_locals)
+    assert False
 
-
+def get_variable(expr, gv, t_locals):
+    if isinstance(expr, c_ast.ArrayRef):
+        return "{}{}".format(expr.name, get_var_value(expr.subscript.name, \
+                                                      gv, t_locals))
+    if isinstance(expr, c_ast.ID):
+        return expr.name
+    
+    assert False
+    
+def eval_bool_expr(expr, gv, t_locals):
+    assert isinstance(expr, c_ast.BinaryOp), "Expression in assert is not binary."
+    
+    if expr.op == "&&":
+        return (eval_bool_expr(expr.left, gv, t_locals)\
+                and eval_bool_expr(expr.right, gv, t_locals))
+    elif expr.op == "||":
+        return (eval_bool_expr(expr.left, gv, t_locals) \
+                or eval_bool_expr(expr.right, gv, t_locals))
+    else:
+        value1 = int(get_value(expr.left, gv, t_locals))
+        value2 = int(get_value(expr.right, gv, t_locals))
+#        print "evaluating {} {} {} from {} {}".format(value1, expr.op, value2,
+#                                                      expr.left, expr.right)
+        if expr.op == "==":
+            return value1 == value2
+        if expr.op == "<":
+            return value1 < value2            
+        if expr.op == "!=":
+            return value1 != value2            
+        assert False
 
 def ggArrayDecl(n):
     return [(n.type.declname+str(x), 0) \
@@ -42,11 +81,11 @@ def get_func_node(ast, name):
 
 
 def process_line(gv, tid, threads, ast):
-#    print(threads)
+#    print gv
     t_name, t_asts, t_locals = threads[tid]
     node = t_asts.pop(0)
     res = 0
-#        print("Processing: {} of T{}".format(node, t_name))
+#    print("Processing: {} of T{}".format(node, t_name))
     
     if isinstance(node, c_ast.Return):
 #        if t_name == "main":
@@ -63,42 +102,34 @@ def process_line(gv, tid, threads, ast):
             gv[var] = int(gv[var]) + 1
 
     if isinstance(node, c_ast.FuncCall):
-        if node.name.name == "pthread_create":
+        function_name = node.name.name
+        expr_list = node.args.exprs
+        
+        if function_name == "pthread_create":
             fname = node.args.exprs[2].name
             fnode = get_func_node(ast, fname)
-            idx = node.args.exprs[0].expr.subscript.name
-            idx_val = get_var_value(gv, t_locals, idx)
-            threads.append((fname+"-"+str(idx_val), [fnode], {}))
-
+            thread_name = get_variable(node.args.exprs[0].expr, gv, t_locals)
+            threads.append(("{}".format(fname, thread_name), [fnode], {}))
             
-        if node.name.name == "pthread_join":
+        if function_name == "pthread_join":
             idx = node.args.exprs[0].subscript.name
             idx_val = get_var_value(gv, t_locals, idx)
             thread_names = [name.split('-')[0] for (name, asts, loc) in threads[1:]]
             if str(idx_val) in thread_names:
                 t_asts.insert(0, node)
-            
-        if node.name.name == "assert":
 
-            var = node.args.exprs[0].left.name
-            var_val = get_var_value(gv, t_locals, var)
-            val = node.args.exprs[0].right.value            
-            if node.args.exprs[0].op == "==":
-                if int(var_val) != int(val):
-                    return gv, None, 1
-                else:
-                    res = -1
-            if node.args.exprs[0].op == "<":
-                if int(var_val) >= int(val):
-                    return gv, None, 1
-                else:
-                    res = -1
-            if node.args.exprs[0].op == "!=":
-                if int(var_val) == int(val):
-                    return gv, None, 1
-                else:
-                    res = -1
-            
+        if function_name == "pthread_exit":
+            if len(t_asts) == 0:
+                del threads[tid]
+                return gv, None, 0
+                
+        if function_name == "assert":
+            result = eval_bool_expr(expr_list[0], gv, t_locals)
+            if result:
+                return gv, None, -1
+            if not result:
+                return gv, None, 1
+                
     if isinstance(node, c_ast.FuncDef):
         l = node.body.block_items[:]
         l.reverse()
@@ -124,11 +155,7 @@ def process_line(gv, tid, threads, ast):
                 t_asts.insert(0, x)
 
     if isinstance(node, c_ast.While):
-        var = node.cond.left.name
-        val = node.cond.right.value
-        var_val = get_var_value(gv, t_locals, var)
-
-        if int(var_val) < int(val):
+        if eval_bool_expr(node.cond, gv, t_locals):
             t_asts.insert(0, node)
             l = node.stmt.block_items[:]
             l.reverse()
@@ -136,27 +163,15 @@ def process_line(gv, tid, threads, ast):
                 t_asts.insert(0, x)
 
     if isinstance(node, c_ast.Assignment):
+        var_name = get_variable(node.lvalue, gv, t_locals)
+        value = get_value(node.rvalue, gv, t_locals)
 
-        if isinstance(node.lvalue, c_ast.ArrayRef):
-            idx = node.lvalue.subscript.name
-            idx_val = get_var_value(gv, t_locals, idx)
-            varl = node.lvalue.name.name + str(idx_val)
-        else:
-            varl = node.lvalue.name
-
-            
-        if isinstance(node.rvalue, c_ast.ArrayRef):
-            idx = node.rvalue.subscript.name
-            idx_val = get_var_value(gv, t_locals, idx)
-            varr = node.rvalue.name.name + str(idx_val)
-            val = get_var_value(gv, t_locals, varr)
-        else:
-            val = node.rvalue.value
-        if  node.op == "=":
-            gv, t_locals = set_var_value(gv, t_locals, varl, int(val))
+        if node.op == "=":
+            gv, t_locals = set_var_value(gv, t_locals, var_name, int(value))
         if node.op == "+=":
-            val_old = get_var_value(gv, t_locals, varl)            
-            gv, t_locals = set_var_value(gv, t_locals, varl, int(val_old) + int(val))
+            old_value = get_var_value(gv, t_locals, var_name)            
+            gv, t_locals = set_var_value(gv, t_locals, var_name, \
+                                         int(old_value) + int(value))
     t = t_name, t_asts, t_locals
 
     return gv, t, res
@@ -185,8 +200,8 @@ def execute(gv, ts, ast):
     t = ts[tid]
     if len(t[1]) > 0:
         gv, t, ce = process_line(gv, tid, ts, ast)
-        if ce:
-            return ce
+        if ce == 1:
+            return "counterexample"
         if t != None:
             ts[tid] = t
 #    print "*"*80

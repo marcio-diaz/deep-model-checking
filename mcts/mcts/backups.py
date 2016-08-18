@@ -39,4 +39,7 @@ def monte_carlo(node):
     while node is not None:
         node.n += 1
         node.q = ((node.n - 1)/node.n) * node.q + 1/node.n * r
+#        node.q = max(node.q, r/3.0)
+#        print(node.n)
+#        print(node.q)        
         node = node.parent

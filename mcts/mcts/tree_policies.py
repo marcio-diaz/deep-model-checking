@@ -14,11 +14,14 @@ class UCB1(object):
         if self.c == 0:  # assert that no nan values are returned
                         # for action_node.n = 0
             return action_node.q
-
-        return (action_node.q +
-                self.c * np.sqrt(2 * np.log(action_node.parent.n) /
-                                 action_node.n))
-
+#        print("act = {} q = {} father = {} log fath = {} child = {}".format(action_node.action,\
+#                                                                            action_node.q, \
+#                                                                            action_node.parent.n,\
+#                                                                            np.log(action_node.parent.n),\
+#                                                                            action_node.n))
+        return ((action_node.q) + \
+                self.c * np.sqrt(2 * np.log(action_node.parent.n) / action_node.n))
+    
 
 def flat(_):
     """

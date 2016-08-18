@@ -1,0 +1,8 @@
+
+
+def clean(source_code):
+    cleaned_source_code = ""
+    for line in source_code:
+        pass
+
+

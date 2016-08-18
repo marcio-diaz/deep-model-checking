@@ -43,7 +43,7 @@ def random_terminal_roll_out(state_node):
     return _roll_out(state_node, stop_terminal)
 
 
-def random_k_terminal_roll_out(state_node, k=2):
+def random_k_terminal_roll_out(state_node, k=1):
 
     def stop_terminal(state):
         return state.is_terminal()
@@ -51,7 +51,8 @@ def random_k_terminal_roll_out(state_node, k=2):
     s = 0.0
     for i in range(k):
         s += _roll_out(state_node, stop_terminal)
-    return s
+
+    return s/k
     
 
 def _roll_out(state_node, stopping_criterion):
@@ -59,13 +60,14 @@ def _roll_out(state_node, stopping_criterion):
     state = state_node.state
     parent = state_node.parent.parent.state
     action = state_node.parent.action
+    pa = action
+    
     while not stopping_criterion(state):
         reward += state.reward(parent, action)
-
+        
         action = random.choice(state.actions)
-#        print("{} {}".format(state.actions, action))
+        
         parent = state
 
         state = parent.perform(action)
-
-    return reward
+    return reward + state.reward(parent, action)

@@ -3,17 +3,27 @@ from itertools import product, chain
 from pycparser import c_parser, c_ast, parse_file, c_generator
 from sys import argv
 
-def get_value(expr, gv, t_locals):
-    if isinstance(expr, c_ast.ID):
-        return get_var_value(gv, t_locals, expr.name)
-    elif isinstance(expr, c_ast.Constant):
-        return expr.value, False # False because we don't touch globals
-    elif isinstance(expr, c_ast.ArrayRef):
-        idx_var_name, is_idx_global = get_var_value(expr.subscript.name, gv, t_locals)
-        var_name =  "{}{}".format(expr.name, idx_var_name)
-        value, is_var_global = get_var_value(var_name, gv, t_locals)
-        return value, (is_idx_global or is_var_global)
-    assert False
+def get_value(expression, global_variables, thread_local_states):
+    """ Given a constant, variable or array expression, 
+    it returns its value. It also indicates if the returned value comes
+    from reading a global variable or not.
+    """
+    is_from_global_variable = False
+    if isinstance(expression, c_ast.ID):
+        return get_var_value(global_variables, thread_local_states,\
+                             expression.name)
+    elif isinstance(expression, c_ast.Constant):
+        return expression.value, is_from_global_variable
+    elif isinstance(expression, c_ast.ArrayRef):
+        idx_var_name, is_idx_global = get_var_value(expression.subscript.name,\
+                                                    global_variables, \
+                                                    thread_local_states)
+        var_name =  "{}{}".format(expression.name, idx_var_name)
+        value, is_var_global = get_var_value(var_name, global_variables, \
+                                             thread_local_states)
+        is_from_global_variable = (is_idx_global or is_var_global)
+        return value, is_from_global_variable
+    assert False, "The expression parameter is not a constant, variable or array."
 
 def get_variable(expr, gv, t_locals):
     if isinstance(expr, c_ast.ArrayRef):

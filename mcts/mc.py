@@ -50,11 +50,11 @@ def get_value(expression, global_variables, thread_local_states):
 def get_variable(expression, global_variables, thread_local_states):
     """ Given an array or a variable, it returns its name.
     """
-    if isinstance(expr, c_ast.ArrayRef):
+    if isinstance(expression, c_ast.ArrayRef):
         value, is_global = get_variable_value(expression.subscript.name, \
                                          global_variables, thread_local_variables)
         return "{}{}".format(expression.name, value), is_global
-    if isinstance(expr, c_ast.ID):
+    if isinstance(expression, c_ast.ID):
         return expression.name, False
     
     assert False, "The expression parameter is not a variable or an array."

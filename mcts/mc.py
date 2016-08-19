@@ -4,26 +4,28 @@ from pycparser import c_parser, c_ast, parse_file, c_generator
 from sys import argv
 
 
-def get_variable_value(global_vars, local_vars, variable_name):
+def get_variable_value(global_variables, local_variables, variable_name):
     """ Given a name of a variable it returns its value.
     """
     is_global = False
-    if variable_name in local_vars.keys():
-        return local_vars[variable_name], is_global
-    if variable_name in global_vars.keys():
+    if variable_name in local_variables.keys():
+        return local_variables[variable_name], is_global
+    if variable_name in global_variables.keys():
         is_global = True
-        return global_vars[variable_name], is_global
+        return global_variables[variable_name], is_global
     assert False, "There is no variable with {} name.".format(variable_name)
 
-def set_var_value(global_vars, local_vars, name, value):
-    if name in local_vars.keys():
-        local_vars[name] = value
-        return global_vars, local_vars
-    if name in global_vars.keys():
-        global_vars[name] = value
-        return global_vars, local_vars
-    assert(False)
-    
+def set_variable_value(global_variables, local_variables, variable_name, value):
+    """ Given a name of a variable and a value, it sets the variable
+    to that value.
+    """
+    if variable_name in local_variables.keys():
+        local_variables[variable_name] = value
+        return global_variables, local_variables
+    if variable_name in global_variables.keys():
+        global_variables[variable_name] = value
+        return global_variables, local_variables
+    assert False, "There is no variable with {} name.".format(variable_name)
 
 def get_value(expression, global_variables, thread_local_states):
     """ Given a constant, variable or array expression, 
@@ -58,8 +60,6 @@ def get_variable(expression, global_variables, thread_local_states):
         return expression.name, False
     
     assert False, "The expression parameter is not a variable or an array."
-
-
 
     
 def eval_bool_expr(expr, gv, t_locals):
@@ -226,7 +226,7 @@ def process_line(gv, tid, threads, ast, simulate):
         
         if node.op == "=":
             if not simulate:
-                gv, t_locals = set_var_value(gv, t_locals, var_name, int(value))
+                gv, t_locals = set_variable_value(gv, t_locals, var_name, int(value))
             else:
                 t_asts.insert(0, node)
                 
@@ -234,7 +234,7 @@ def process_line(gv, tid, threads, ast, simulate):
             old_value, is_global = get_variable_value(gv, t_locals, var_name)
             value, is_global = get_value(node.rvalue, gv, t_locals)
             if not simulate:
-                gv, t_locals = set_var_value(gv, t_locals, var_name, \
+                gv, t_locals = set_variable_value(gv, t_locals, var_name, \
                                              int(old_value) + int(value))
             else:
                 t_asts.insert(0, node)

@@ -99,39 +99,65 @@ def evaluate_boolean_expression(expression, global_variables, local_variables):
             return left_value != right_value, is_global            
         assert False, "Binary operator {} is not ==, < or !=.".format(expression.op)
 
-def ggArrayDecl(n):
-    return [(n.type.declname+str(x), 0) \
-            for x in range(int(n.dim.value))]
 
-def ggTypeDecl(n):
-    if n.init == None:
-        return [(n.name, None)]
-    if isinstance(n.init, c_ast.UnaryOp):
-        return [(n.name, '-'+n.init.expr.value)]
-    if isinstance(n.init, c_ast.Constant):
-        return [(n.name, n.init.value)]
+def get_function_node(abstract_syntax_tree, function_name):
+    """ Given an abstract syntax tree and the name of a function,
+    it returns the node in the tree corresponding to that function.
+    """
+    for node in abstract_syntax_tree.ext:
+        if isinstance(node, c_ast.FuncDef):
+            if node.decl.name == function_name:
+                return node
+    assert False, "The function with name {} cannot be found.".format(function_name)
+
+
+def get_global_state(abstract_syntax_tree):
+    """ Given an abstract syntax tree, it returns a dictionary of global variables
+    with their values.
+    """
+    global_state = []
+    for node in abstract_syntax_tree.ext:
+        if isinstance(node, c_ast.Decl):
+            global_state.extend(get_variables_from_declaration(node))
+    return dict(global_state)
+
     
-def get_vars_from_decl(n):
-    global_vars = []
-    if isinstance(n.type, c_ast.ArrayDecl):
-        global_vars.extend(ggArrayDecl(n.type))
-    if isinstance(n.type, c_ast.TypeDecl):
-        global_vars.extend(ggTypeDecl(n))
-    return global_vars
+def get_variables_from_declaration(node):
+    """ Given an AST node, it returns the variables found and their values.
+    This function was created mainly to transform an array variable 
+    into many simple variables.
+    """
+    global_variables = []
+    if isinstance(node.type, c_ast.ArrayDecl):
+        global_variables.extend(array_declaration_to_variables(node.type))
+    elif isinstance(node.type, c_ast.TypeDecl):
+        global_variables.extend(simple_declaration(node))
+    else:
+        assert False, "Declaration type is not supported."
+    return global_variables
 
-def get_global_state(ast):
-    global_vars = []
-    for i, n in enumerate(ast.ext):
-        if isinstance(n, c_ast.Decl):
-            global_vars.extend(get_vars_from_decl(n))
-    return dict(global_vars)
+    
+def array_declaration_to_variables(node):
+    """ Given an array declaration (TODO: check with an assert this),
+    it returns a set of variables that represent the array.
+    """
+    return [(node.type.declname + str(x), 0) \
+            for x in range(int(node.dim.value))]
 
-
-def get_func_node(ast, name):
-    for n in ast.ext:
-        if isinstance(n, c_ast.FuncDef):
-            if n.decl.name == name:
-                return n
+def simple_declaration(node):
+    """ Given a simple non-array declaration, it returns the variable and the value.
+    """
+    if node.init == None:
+        return [(node.name, None)]
+    elif isinstance(node.init, c_ast.UnaryOp):
+        return [(node.name, '-' + node.init.expr.value)] # We assume that unary
+    # operator expressions are negative integers. TODO: make it correct.
+    elif isinstance(node.init, c_ast.Constant):
+        return [(node.name, node.init.value)]
+    else:
+        assert False, "Declaration initialization " \
+            "{} is not supported.".format(node.init)
+    
 
 
 def process_line(gv, tid, threads, ast, simulate):
@@ -166,7 +192,7 @@ def process_line(gv, tid, threads, ast, simulate):
         
         if function_name == "pthread_create":
             fname = node.args.exprs[2].name
-            fnode = get_func_node(ast, fname)
+            fnode = get_function_node(ast, fname)
             thread_name = get_variable(node.args.exprs[0].expr, gv, t_locals)
             threads.append(("{}".format(fname, thread_name), [fnode], {}))
 #            use_global = True
@@ -184,7 +210,8 @@ def process_line(gv, tid, threads, ast, simulate):
                 return gv, None, 0, use_global
                 
         if function_name == "assert":
-            result, is_global = evaluate_boolean_expression(expr_list[0], gv, t_locals)
+            result, is_global = evaluate_boolean_expression(expr_list[0], gv, \
+                                                            t_locals)
             use_global = use_global or is_global
             if not simulate:
                 if result:
@@ -201,7 +228,7 @@ def process_line(gv, tid, threads, ast, simulate):
             t_asts.insert(0, x)
     
     if isinstance(node, c_ast.Decl):
-        vars = get_vars_from_decl(node)
+        vars = get_variables_from_declaration(node)
         for k, v in vars:
             t_locals[k] = v
             
@@ -280,7 +307,7 @@ def algorithm():
 
     for k in range(10000000):
         global_vars = get_global_state(ast)
-        threads = [("main", [get_func_node(ast, "main")], {})]
+        threads = [("main", [get_function_node(ast, "main")], {})]
         deep = 0
         while True:
             r = execute(global_vars, threads, ast)

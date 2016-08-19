@@ -125,6 +125,7 @@ class ProgramState(object):
 
 if __name__ == "__main__":
     script, filename = argv
+
     # Read source code.
     f = open(filename)
     source_code = f.readlines()
@@ -139,7 +140,7 @@ if __name__ == "__main__":
 
     # Create the initial state of the program.
     global_variables = get_global_state(abstract_syntax_tree)
-    thread_states = [("main", [get_func_node(abstract_syntax_tree, "main")], {})]
+    thread_states = [("main", [get_function_node(abstract_syntax_tree, "main")], {})]
     counter_example_found = False
     state = ProgramState((global_variables, thread_states, \
                           abstract_syntax_tree, counter_example_found))

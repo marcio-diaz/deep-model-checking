@@ -13,7 +13,6 @@ void *thread(void * arg)
 int main()
 {
   int tid;
-  // pthread_t t[16]; variables con tipo pthread no deben ser procesadas
   tid = 0;
   while (tid<16) {
     array_index++;

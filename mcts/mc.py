@@ -26,6 +26,7 @@ def set_variable_value(global_variables, local_variables, variable_name, value):
     if variable_name in global_variables.keys():
         global_variables[variable_name] = value
         return global_variables, local_variables
+    
     assert False, "There is no variable with {} name.".format(variable_name)
 
     
@@ -40,12 +41,12 @@ def get_value(expression, global_variables, local_variables):
     elif isinstance(expression, c_ast.Constant):
         return expression.value, is_from_global_variable
     elif isinstance(expression, c_ast.ArrayRef):
-        idx_var_name, is_idx_global = get_variable_value(expression.subscript.name,\
-                                                         global_variables, \
-                                                         local_variables)
-        var_name =  "{}{}".format(expression.name, idx_var_name)
-        value, is_var_global = get_variable_value(var_name, global_variables, \
-                                                  local_variables)
+        idx_var_name, is_idx_global = get_variable_value(global_variables, 
+                                                         local_variables, 
+							 expression.subscript.name)
+        var_name =  "{}{}".format(expression.name.name, idx_var_name)
+        value, is_var_global = get_variable_value(global_variables, 
+                                                  local_variables, var_name)
         is_from_global_variable = (is_idx_global or is_var_global)
         return value, is_from_global_variable
     assert False, "The expression parameter is not a constant, variable or array."
@@ -55,9 +56,9 @@ def get_variable(expression, global_variables, local_variables):
     """ Given an array or a variable, it returns its name.
     """
     if isinstance(expression, c_ast.ArrayRef):
-        value, is_global = get_variable_value(expression.subscript.name, \
-                                              global_variables, local_variables)
-        return "{}{}".format(expression.name, value), is_global
+        value, is_global = get_variable_value(global_variables, local_variables, 
+						  expression.subscript.name)
+	return "{}{}".format(expression.name.name, value), is_global
     if isinstance(expression, c_ast.ID):
         return expression.name, False
     assert False, "The expression parameter is not a variable or an array."
@@ -168,6 +169,7 @@ def process_line(global_variables, thread_id, thread_states, \
     is_counter_example_found = False
     is_assert_found = False
     
+    
     if isinstance(node, c_ast.Return):
         if len(thread_instructions) == 0:
             del thread_states[thread_id]
@@ -265,7 +267,7 @@ def process_line(global_variables, thread_id, thread_states, \
         is_global = is_global or is_value_from_global
         
         if node.op == "=":
-            if not simulate:
+            if not simulate or not is_global:
                 global_variables, thread_variables = \
                                     set_variable_value(global_variables,
                                                        thread_variables,

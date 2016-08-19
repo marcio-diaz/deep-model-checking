@@ -99,11 +99,12 @@ class ProgramState(object):
     def reward(self, parent, action):
         global_variables, thread_states, abstract_syntax_tree, \
             is_counter_example_found, is_assert_found = self.pos
-#        s = int(gv['sum'])
-        i = int(global_variables['i'])
-        j = int(global_variables['j'])        
+        s = int(global_variables['sum']) # for sigma
+#        i = int(global_variables['i']) # for fibonacci
+#        j = int(global_variables['j']) # for fibonacci      
         if is_assert_found:
-            return max(j, i)/46368.0
+#            return max(j, i)/46368.0 # for fibonacci
+            return -(1.0/14.0) * s + 15.0/14.0 # for sigma
         else:
             return 0.0
 
@@ -151,14 +152,16 @@ if __name__ == "__main__":
         state = state.advance_until_no_more_local_actions()
         root = StateNode(None, state)
         print("{} {}".format(state.pos[0], state.pos[1]))
-        number_of_iterations = 2500
         if state.is_terminal():
             break
+
+#        number_of_iterations = 2500 # for fibonacci
+        number_of_iterations = 30 # for sigma
         best_action, reward = mcts(root, number_of_iterations)
         print("\nBest action = {}, Reward = {}.".format(best_action, reward))
         state = state.perform(best_action)
 
-    if state.pos[2]:
+    if state.pos[3]:
         print "\nCounter-example found :)"
     else:
         print "\nCounter-example NOT found :("    

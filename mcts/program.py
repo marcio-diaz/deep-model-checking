@@ -53,7 +53,7 @@ class ProgramState(object):
         self.actions = [idx for idx in range(len(ts))]
 
 
-    def execute_trivial(self):
+    def advance_until_no_more_local_actions(self):
         gv2, ts2, ast, ce = self.pos        
         i = 0
         while i < len(ts2):
@@ -125,27 +125,38 @@ class ProgramState(object):
 
 if __name__ == "__main__":
     script, filename = argv
-    # read source code
+    # Read source code.
     f = open(filename)
     source_code = f.readlines()
+
+    # We remove some directives not supported by pycparser
+    # and change 'for' loops to 'while' loops.
     cleaned_source_code = clean(source_code)
-    # parse clean code
+
+    # Parse clean code.
     parser = c_parser.CParser()
-    ast = parser.parse(cleaned_source_code)
-    gv = get_global_state(ast)
-    ts = [("main", [get_func_node(ast, "main")], {})]
-#    k_step_rollout = RandomKStepRollOut(10000)
-    mcts = MCTS(tree_policy=UCB1(c=10.41),
+    abstract_syntax_tree = parser.parse(cleaned_source_code)
+
+    # Create the initial state of the program.
+    global_variables = get_global_state(abstract_syntax_tree)
+    thread_states = [("main", [get_func_node(abstract_syntax_tree, "main")], {})]
+    counter_example_found = False
+    state = ProgramState((global_variables, thread_states, \
+                          abstract_syntax_tree, counter_example_found))
+
+    # Instantiate Monte Carlo Tree Search algorithm.
+    mcts = MCTS(tree_policy=UCB1(c=1.41),
                 default_policy=random_k_terminal_roll_out,
                 backup=monte_carlo)
 
-    state = ProgramState((gv, ts, ast, False))
+    # Execute the program until termination.
     while not state.is_terminal():
-        state = state.execute_trivial()
+        state = state.advance_until_no_more_local_actions()
         root = StateNode(None, state)
-        print("{} {}".format(state.pos[0], state.pos[1]))        
-        best_action, reward = mcts(root, 7000)
-        print("\nbest action = {} reward = {}".format(best_action, reward))
+        print("{} {}".format(state.pos[0], state.pos[1]))
+        number_of_iterations = 2500
+        best_action, reward = mcts(root, number_of_iterations)
+        print("\nBest action = {}, Reward = {}.".format(best_action, reward))
         state = state.perform(best_action)
 
     print("{} {}".format(state.pos[0], state.pos[1]))

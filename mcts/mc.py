@@ -15,6 +15,7 @@ def get_variable_value(global_variables, local_variables, variable_name):
         return global_variables[variable_name], is_global
     assert False, "There is no variable with {} name.".format(variable_name)
 
+    
 def set_variable_value(global_variables, local_variables, variable_name, value):
     """ Given a name of a variable and a value, it sets the variable
     to that value.
@@ -27,67 +28,76 @@ def set_variable_value(global_variables, local_variables, variable_name, value):
         return global_variables, local_variables
     assert False, "There is no variable with {} name.".format(variable_name)
 
-def get_value(expression, global_variables, thread_local_states):
+    
+def get_value(expression, global_variables, local_variables):
     """ Given a constant, variable or array expression, 
     it returns its value. It also indicates if the returned value comes
     from reading a global variable or not.
     """
     is_from_global_variable = False
     if isinstance(expression, c_ast.ID):
-        return get_variable_value(global_variables, thread_local_states,\
-                             expression.name)
+        return get_variable_value(global_variables, local_variables, expression.name)
     elif isinstance(expression, c_ast.Constant):
         return expression.value, is_from_global_variable
     elif isinstance(expression, c_ast.ArrayRef):
         idx_var_name, is_idx_global = get_variable_value(expression.subscript.name,\
-                                                    global_variables, \
-                                                    thread_local_states)
+                                                         global_variables, \
+                                                         local_variables)
         var_name =  "{}{}".format(expression.name, idx_var_name)
         value, is_var_global = get_variable_value(var_name, global_variables, \
-                                             thread_local_states)
+                                                  local_variables)
         is_from_global_variable = (is_idx_global or is_var_global)
         return value, is_from_global_variable
     assert False, "The expression parameter is not a constant, variable or array."
 
-def get_variable(expression, global_variables, thread_local_states):
+    
+def get_variable(expression, global_variables, local_variables):
     """ Given an array or a variable, it returns its name.
     """
     if isinstance(expression, c_ast.ArrayRef):
         value, is_global = get_variable_value(expression.subscript.name, \
-                                         global_variables, thread_local_variables)
+                                              global_variables, local_variables)
         return "{}{}".format(expression.name, value), is_global
     if isinstance(expression, c_ast.ID):
         return expression.name, False
-    
     assert False, "The expression parameter is not a variable or an array."
 
     
-def eval_bool_expr(expr, gv, t_locals):
-    assert isinstance(expr, c_ast.BinaryOp), "Expression in assert is not binary."
+def evaluate_boolean_expression(expression, global_variables, local_variables):
+    """ Given a boolean expression it returns its value. TODO: make it work
+    for literals. Also, it only support integers inside the expression. Maybe
+    it would be interesting to add support for strings.
+    """
+    assert isinstance(expression, c_ast.BinaryOp), "Expression in is not binary."
     
-    if expr.op == "&&":
-        return (eval_bool_expr(expr.left, gv, t_locals)\
-                and eval_bool_expr(expr.right, gv, t_locals))
-    elif expr.op == "||":
-        return (eval_bool_expr(expr.left, gv, t_locals) \
-                or eval_bool_expr(expr.right, gv, t_locals))
+    if expression.op == "&&":
+        return (evaluate_boolean_expression(expression.left, global_variables, \
+                                            local_variables) \
+                and evaluate_boolean_expression(expression.right, global_variables, \
+                                                local_variables))
+    elif expression.op == "||":
+        return (evaluate_boolean_expression(expression.left, global_variables,
+                                            local_variables) \
+                or evaluate_boolean_expression(expression.right, global_variables, \
+                                               local_variables))
     else:
-        value1, is_global1 = get_value(expr.left, gv, t_locals)
-        value2, is_global2 = get_value(expr.right, gv, t_locals)
-#        print "evaluating {} {} {} from {} {}".format(value1, expr.op, value2,
-#                                                      expr.left, expr.right)
-
-        value1 = int(value1)
-        value2 = int(value2)
-        is_global = (is_global1 or is_global2)
+        left_value, is_left_from_global = get_value(expression.left, \
+                                                    global_variables, \
+                                                    local_variables)
+        right_value, is_right_from_global = get_value(expression.right, \
+                                                      global_variables, \
+                                                      local_variables)
+        left_value = int(left_value)
+        right_value = int(right_value)
+        is_global = is_left_from_global or is_right_from_global
         
-        if expr.op == "==":
-            return value1 == value2, is_global
-        if expr.op == "<":
-            return value1 < value2, is_global           
-        if expr.op == "!=":
-            return value1 != value2, is_global            
-        assert False
+        if expression.op == "==":
+            return left_value == right_value, is_global
+        if expression.op == "<":
+            return left_value < right_value, is_global           
+        if expression.op == "!=":
+            return left_value != right_value, is_global            
+        assert False, "Binary operator {} is not ==, < or !=.".format(expression.op)
 
 def ggArrayDecl(n):
     return [(n.type.declname+str(x), 0) \
@@ -174,7 +184,7 @@ def process_line(gv, tid, threads, ast, simulate):
                 return gv, None, 0, use_global
                 
         if function_name == "assert":
-            result, is_global = eval_bool_expr(expr_list[0], gv, t_locals)
+            result, is_global = evaluate_boolean_expression(expr_list[0], gv, t_locals)
             use_global = use_global or is_global
             if not simulate:
                 if result:
@@ -209,7 +219,7 @@ def process_line(gv, tid, threads, ast, simulate):
                 t_asts.insert(0, x)
 
     if isinstance(node, c_ast.While):
-        cond, is_global = eval_bool_expr(node.cond, gv, t_locals)
+        cond, is_global = evaluate_boolean_expression(node.cond, gv, t_locals)
 #        use_global = use_global or is_global // I don't care on fib example.
         if cond:
             t_asts.insert(0, node)

@@ -49,11 +49,8 @@ def random_k_terminal_roll_out(state_node, k=3):
         return state.is_terminal()
 
     s = 0.0
-#    r = []
     for i in range(k):
         s += _roll_out(state_node, stop_terminal)
-#        r.append(_roll_out(state_node, stop_terminal))
-#    return max(r)
     return s/k
 
 def _roll_out(state_node, stopping_criterion):
@@ -65,10 +62,7 @@ def _roll_out(state_node, stopping_criterion):
     
     while not stopping_criterion(state):
         reward += state.reward(parent, action)
-        
         action = random.choice(state.actions)
-        
         parent = state
-
         state = parent.perform(action)
     return reward + state.reward(parent, action)

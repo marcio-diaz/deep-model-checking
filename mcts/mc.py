@@ -131,7 +131,7 @@ def get_variables_from_declaration(node):
     if isinstance(node.type, c_ast.ArrayDecl):
         global_variables.extend(array_declaration_to_variables(node.type))
     elif isinstance(node.type, c_ast.TypeDecl):
-        global_variables.extend(simple_declaration(node))
+        global_variables.extend(simple_declaration_to_variables(node))
     else:
         assert False, "Declaration type is not supported."
     return global_variables
@@ -144,7 +144,7 @@ def array_declaration_to_variables(node):
     return [(node.type.declname + str(x), 0) \
             for x in range(int(node.dim.value))]
 
-def simple_declaration(node):
+def simple_declaration_to_variables(node):
     """ Given a simple non-array declaration, it returns the variable and the value.
     """
     if node.init == None:
@@ -160,165 +160,137 @@ def simple_declaration(node):
     
 
 
-def process_line(gv, tid, threads, ast, simulate):
-#    print gv
-    t_name, t_asts, t_locals = threads[tid]
-    node = t_asts.pop(0)
-    res = 0
-    use_global = False
-#    print("Processing: {} of T{}".format(node, t_name))
+def process_line(global_variables, thread_id, thread_states, \
+                 abstract_syntax_tree, simulate):
+    thread_name, thread_instructions, thread_variables = thread_states[thread_id]
+    node = thread_instructions.pop(0)
+    is_global = False
+    is_counter_example_found = False
+    is_assert_found = False
     
     if isinstance(node, c_ast.Return):
-#        if t_name == "main":
-#            print("Returning from main")
-        if len(t_asts) == 0:
-            del threads[tid]
-            return gv, None, 0, False
+        if len(thread_instructions) == 0:
+            del thread_states[thread_id]
     
     if isinstance(node, c_ast.UnaryOp):
-        var = node.expr.name
-        if var in t_locals.keys():
-            t_locals[var] = int(t_locals[var]) + 1
+        variable_name = node.expr.name
+        value, is_var_global = get_variable_value(global_variables, \
+                                                  thread_variables, variable_name)
+        is_global = is_global or is_var_global
+        if not simulate:
+            global_variables, thread_variables = set_variable_value(global_variables,
+                                                                    thread_variables,
+                                                                    variable_name, 
+                                                                    int(value) + 1)
+        elif not is_var_global:
+            global_variables, thread_variables = set_variable_value(global_variables,
+                                                                    thread_variables,
+                                                                    variable_name, 
+                                                                    int(value) + 1)
         else:
-            use_global = True            
-            if not simulate:
-                gv[var] = int(gv[var]) + 1
-            else:
-                t_asts.insert(0, node)
+            thread_instructions.insert(0, node)
                 
     if isinstance(node, c_ast.FuncCall):
         function_name = node.name.name
         expr_list = node.args.exprs
         
         if function_name == "pthread_create":
-            fname = node.args.exprs[2].name
-            fnode = get_function_node(ast, fname)
-            thread_name = get_variable(node.args.exprs[0].expr, gv, t_locals)
-            threads.append(("{}".format(fname, thread_name), [fnode], {}))
-#            use_global = True
+            thread_function_name = node.args.exprs[2].name
+            function_node = get_function_node(abstract_syntax_tree,
+                                              thread_function_name)
+            new_thread_name = get_variable(node.args.exprs[0].expr, global_variables,
+                                           thread_variables)
+            thread_states.append(("{}".format(thread_function_name, new_thread_name),
+                                  [function_node], {}))
             
         if function_name == "pthread_join":
-            idx = node.args.exprs[0].subscript.name
-            idx_val = get_variable_value(gv, t_locals, idx)
-            thread_names = [name.split('-')[0] for (name, asts, loc) in threads[1:]]
-            if str(idx_val) in thread_names:
-                t_asts.insert(0, node)
+            index_variable_name = node.args.exprs[0].subscript.name
+            index_number = get_variable_value(global_variables, thread_variables,
+                                              index_variable_name)
+            thread_names = [name.split('-')[0] for (name, instructions, variables)
+                            in thread_states[1:]]
+            
+            if str(index_number) in thread_names:
+                thread_instructions.insert(0, node)
 
         if function_name == "pthread_exit":
-            if len(t_asts) == 0:
-                del threads[tid]
-                return gv, None, 0, use_global
+            if len(thread_instructions) == 0:
+                del thread_states[thread_id]
                 
         if function_name == "assert":
-            result, is_global = evaluate_boolean_expression(expr_list[0], gv, \
-                                                            t_locals)
-            use_global = use_global or is_global
+            result, is_using_global = evaluate_boolean_expression(expr_list[0],
+                                                                  global_variables, 
+                                                                  thread_variables)
+            is_global = is_global or is_using_global
+
             if not simulate:
-                if result:
-                    return gv, None, -1, use_global
-                if not result:
-                    return gv, None, 1, use_global
+                is_counter_example_found = not result
+                is_assert_found = True
             else:
-                t_asts.insert(0, node)
+                is_assert_found = True                
+                is_counter_example_found = not result
+                thread_instructions.insert(0, node)
                 
     if isinstance(node, c_ast.FuncDef):
-        l = node.body.block_items[:]
-        l.reverse()
-        for x in l:
-            t_asts.insert(0, x)
+        function_instructions = node.body.block_items[:]
+        function_instructions.reverse()
+        for instruction in function_instructions:
+            thread_instructions.insert(0, instruction)
     
     if isinstance(node, c_ast.Decl):
-        vars = get_variables_from_declaration(node)
-        for k, v in vars:
-            t_locals[k] = v
+        variables = get_variables_from_declaration(node)
+        for name, value in variables:
+            thread_variables[name] = value
             
-    if isinstance(node, c_ast.For):
-        lvar = node.init.lvalue.name # variable of the for
-        val = node.init.rvalue.value # init value of the var
-        cond = node.cond.right.value # condition value of the for
-        t_locals[lvar] = val
-        if t_locals[lvar] < cond:
-            node.init.rvalue.value = str(int(val) + 1)
-            t_asts.insert(0, node)
-            l = node.stmt.block_items[:]
-            l.reverse()
-            for x in l:
-                t_asts.insert(0, x)
 
     if isinstance(node, c_ast.While):
-        cond, is_global = evaluate_boolean_expression(node.cond, gv, t_locals)
+        result, is_global = evaluate_boolean_expression(node.cond,
+                                                        global_variables,
+                                                        thread_variables)
 #        use_global = use_global or is_global // I don't care on fib example.
-        if cond:
-            t_asts.insert(0, node)
-            l = node.stmt.block_items[:]
-            l.reverse()
-            for x in l:
-                t_asts.insert(0, x)
+        if result:
+            thread_instructions.insert(0, node)
+            instructions = node.stmt.block_items[:]
+            instructions.reverse()
+            for instruction in instructions:
+                thread_instructions.insert(0, instruction)
 
     if isinstance(node, c_ast.Assignment):
-        var_name, is_global = get_variable(node.lvalue, gv, t_locals)
-        use_global = (use_global or is_global)
-        value, is_global = get_value(node.rvalue, gv, t_locals)
-        use_global = (use_global or is_global)
+        variable_name, is_global_variable = get_variable(node.lvalue,
+                                                          global_variables,
+                                                          thread_variables)
+        is_global = is_global or is_global_variable
+        value, is_value_from_global = get_value(node.rvalue, global_variables, \
+                                                thread_variables)
+        is_global = is_global or is_value_from_global
         
         if node.op == "=":
             if not simulate:
-                gv, t_locals = set_variable_value(gv, t_locals, var_name, int(value))
+                global_variables, thread_variables = \
+                                    set_variable_value(global_variables,
+                                                       thread_variables,
+                                                       variable_name,
+                                                       int(value))
             else:
-                t_asts.insert(0, node)
+                thread_instructions.insert(0, node)
                 
         if node.op == "+=":
-            old_value, is_global = get_variable_value(gv, t_locals, var_name)
-            value, is_global = get_value(node.rvalue, gv, t_locals)
+            old_value, is_value_from_global = get_variable_value(global_variables,
+                                                                 thread_variables,
+                                                                 variable_name)
+            value, is_global_variable = get_value(node.rvalue, global_variables, \
+                                                  thread_variables)
+            is_global = is_global or is_global_variable
             if not simulate:
-                gv, t_locals = set_variable_value(gv, t_locals, var_name, \
-                                             int(old_value) + int(value))
+                global_variables, thread_variables = \
+                                            set_variable_value(global_variables,
+                                                               thread_variables,
+                                                               variable_name, 
+                                                               int(old_value) \
+                                                               + int(value))
             else:
-                t_asts.insert(0, node)
+                thread_instructions.insert(0, node)
                 
-    t = t_name, t_asts, t_locals
+    return global_variables, thread_states, is_counter_example_found, is_global, \
+        is_assert_found
 
-    return gv, t, res, use_global
-
-    
-def execute(gv, ts, ast):
-    # choose one thread at random
-    ts = [t for t in ts if t != None]
-    tid = randint(0, len(ts)-1)
-    t = ts[tid]
-    if len(t[1]) > 0:
-        gv, t, ce = process_line(gv, tid, ts, ast)
-        if ce == 1:
-            return "counterexample"
-        if t != None:
-            ts[tid] = t
-#    print "*"*80
-#    print global_vars
-#    print threads
-#    print "*"*80
-    return gv, ts, ast
-    # execute its line
-    # if finish with that thread remove it
-    # modify global and locals
-            
-def algorithm():
-    script, filename = argv
-    ast = parse_file(filename, use_cpp=True)
-
-    for k in range(10000000):
-        global_vars = get_global_state(ast)
-        threads = [("main", [get_function_node(ast, "main")], {})]
-        deep = 0
-        while True:
-            r = execute(global_vars, threads, ast)
-            if r == "counterexample":
-                print "Counter-example found :). # deep = {}\n".format(deep)
-                return
-            global_vars, threads, ast = r
-            if len(threads) == 0:
-                print "SAFE. # deep = {}".format(deep)
-                break
-            deep = deep + 1
-
-if __name__ == "__main__":
-    algorithm()

@@ -45,76 +45,70 @@ class ProgramAction(object):
 
 class ProgramState(object):
     def __init__(self, pos):
-        # we assume @pos is a list [global_vars, threads, ast, ce]  
         self.pos = pos
-        gv, ts, ast, ce = pos
-        # thus we have one action for each thread
-        ts = [t for t in ts if t != None]
-        self.actions = [idx for idx in range(len(ts))]
+        global_variables, thread_states, abstract_syntax_tree, \
+            is_counter_example_found, is_assert_found = pos
+        thread_states = [t for t in thread_states if t != None]
+        # We have one action for each thread.
+        self.actions = [a for a in range(len(thread_states))]
 
 
     def advance_until_no_more_local_actions(self):
-        gv2, ts2, ast, ce = self.pos        
-        i = 0
-        while i < len(ts2):
-#            print i
-            ug = False
-            while not ug:
-                gv2, t, ce, ug = process_line(gv2, i, ts2, ast, True)
-                if t != None and ce == 0:
-                    ts2[i] = thread_copy(t)
-                else:
+        """ Execute as many *local* thread instructions as it can. 
+        It return once all threads need to execute a instruction 
+        that use global state.
+        """
+        global_variables, thread_states, abstract_syntax_tree, \
+            is_counter_example_found, is_assert_found = self.pos
+        simulate = True # Do not execute global instructions.
+        thread_index = 0
+        while thread_index < len(thread_states):
+            is_global = False
+            while not is_global:
+                if thread_index >= len(thread_states):
                     break
-            i += 1
+                global_variables, thread_states, is_counter_example_found, \
+                    is_global, is_assert_found = process_line(global_variables,
+                                                              thread_index,
+                                                              thread_states, 
+                                                              abstract_syntax_tree,
+                                                              simulate)
+            thread_index += 1
+        return ProgramState((global_variables, thread_states,
+                             abstract_syntax_tree, is_counter_example_found,
+                             is_assert_found))
 
-        return ProgramState((gv2, ts2, ast, ce))
 
     def perform(self, action):
-        # @ce is a boolean that indicate if the state
-        # is a counterexample.
-        gv, ts, ast, ce = self.pos
-#        print("in threads {}\n".format(ts))
-        ts2 = threads_copy(ts)
-        gv2 = gv.copy()
-        ug = False
+        global_variables, thread_states, abstract_syntax_tree, \
+            is_counter_example_found, is_assert_found = self.pos
+        assert action < len(thread_states), "There is no thread corresponding" \
+            " to action {}".format(action)
+        thread_states_copy = threads_copy(thread_states)
+        global_variables_copy = global_variables.copy()
+        simulate = False
+        global_variables_copy, thread_states_copy, is_counter_example_found, \
+            is_global, is_assert_found = process_line(global_variables_copy,
+                                                      action, thread_states_copy,
+                                                      abstract_syntax_tree, simulate)
+        return ProgramState((global_variables_copy, thread_states_copy,
+                             abstract_syntax_tree, is_counter_example_found,
+                             is_assert_found))
 
-        while not ug:
-            gv2, t, ce, ug = process_line(gv2, action, ts2, ast, False)
-            if t != None and ce == 0:
-                ts2[action] = thread_copy(t)
-            else:
-                break
-            
-#        print("out threads {}\n".format(ts2))           
-        return ProgramState((gv2, ts2, ast, ce))
-
+    
     def reward(self, parent, action):
-        gv, ts, ast, ce = self.pos
+        global_variables, thread_states, abstract_syntax_tree, \
+            is_counter_example_found, is_assert_found = self.pos
 #        s = int(gv['sum'])
-        i = int(gv['i'])
-        j = int(gv['j'])        
-        if ce == 1:
- #           print("reward 10")
-            return 1
-        elif ce == 0:
-            #print("reward 0")
-#            if s >= 1:
-#                return -1
-            return 0
-        else:
-            assert(ce == -1)
-#            return 0
-            #print("reward -10")            
-#            return (-(46368-i)-(46368-j))*100
+        i = int(global_variables['i'])
+        j = int(global_variables['j'])        
+        if is_assert_found:
             return max(j, i)/46368.0
+        else:
+            return 0.0
 
     def is_terminal(self):
-        if self.pos[3] != 0:
-#            print("terminal")
-            return True
-        else:
-            return False
-
+        return self.pos[4]
 
     def __eq__(self, other):
         return (self.pos == other.pos)
@@ -142,8 +136,10 @@ if __name__ == "__main__":
     global_variables = get_global_state(abstract_syntax_tree)
     thread_states = [("main", [get_function_node(abstract_syntax_tree, "main")], {})]
     counter_example_found = False
+    is_assert_found = False
     state = ProgramState((global_variables, thread_states, \
-                          abstract_syntax_tree, counter_example_found))
+                          abstract_syntax_tree, counter_example_found,
+                          is_assert_found))
 
     # Instantiate Monte Carlo Tree Search algorithm.
     mcts = MCTS(tree_policy=UCB1(c=1.41),
@@ -156,8 +152,13 @@ if __name__ == "__main__":
         root = StateNode(None, state)
         print("{} {}".format(state.pos[0], state.pos[1]))
         number_of_iterations = 2500
+        if state.is_terminal():
+            break
         best_action, reward = mcts(root, number_of_iterations)
         print("\nBest action = {}, Reward = {}.".format(best_action, reward))
         state = state.perform(best_action)
 
-    print("{} {}".format(state.pos[0], state.pos[1]))
+    if state.pos[2]:
+        print "\nCounter-example found :)"
+    else:
+        print "\nCounter-example NOT found :("    

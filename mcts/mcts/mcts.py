@@ -48,18 +48,13 @@ def _expand(state_node):
 def _best_child(state_node, tree_policy):
     best_action_node = utils.rand_max(state_node.children.values(),
                                       key=tree_policy)
-#    print("best child ", best_action_node.action)
-
     return best_action_node.sample_state()
 
 
 def _get_next_node(state_node, tree_policy):
     while not state_node.state.is_terminal():
         if state_node.untried_actions:
-#            print("untried actions")
             return _expand(state_node)
         else:
-#            print("best child")            
             state_node = _best_child(state_node, tree_policy)
-#    print(state_node.state.pos[0])
     return state_node

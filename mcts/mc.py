@@ -3,6 +3,28 @@ from itertools import product, chain
 from pycparser import c_parser, c_ast, parse_file, c_generator
 from sys import argv
 
+
+def get_variable_value(global_vars, local_vars, variable_name):
+    """ Given a name of a variable it returns its value.
+    """
+    is_global = False
+    if variable_name in local_vars.keys():
+        return local_vars[variable_name], is_global
+    if variable_name in global_vars.keys():
+        is_global = True
+        return global_vars[variable_name], is_global
+    assert False, "There is no variable with {} name.".format(variable_name)
+
+def set_var_value(global_vars, local_vars, name, value):
+    if name in local_vars.keys():
+        local_vars[name] = value
+        return global_vars, local_vars
+    if name in global_vars.keys():
+        global_vars[name] = value
+        return global_vars, local_vars
+    assert(False)
+    
+
 def get_value(expression, global_variables, thread_local_states):
     """ Given a constant, variable or array expression, 
     it returns its value. It also indicates if the returned value comes
@@ -10,29 +32,35 @@ def get_value(expression, global_variables, thread_local_states):
     """
     is_from_global_variable = False
     if isinstance(expression, c_ast.ID):
-        return get_var_value(global_variables, thread_local_states,\
+        return get_variable_value(global_variables, thread_local_states,\
                              expression.name)
     elif isinstance(expression, c_ast.Constant):
         return expression.value, is_from_global_variable
     elif isinstance(expression, c_ast.ArrayRef):
-        idx_var_name, is_idx_global = get_var_value(expression.subscript.name,\
+        idx_var_name, is_idx_global = get_variable_value(expression.subscript.name,\
                                                     global_variables, \
                                                     thread_local_states)
         var_name =  "{}{}".format(expression.name, idx_var_name)
-        value, is_var_global = get_var_value(var_name, global_variables, \
+        value, is_var_global = get_variable_value(var_name, global_variables, \
                                              thread_local_states)
         is_from_global_variable = (is_idx_global or is_var_global)
         return value, is_from_global_variable
     assert False, "The expression parameter is not a constant, variable or array."
 
-def get_variable(expr, gv, t_locals):
+def get_variable(expression, global_variables, thread_local_states):
+    """ Given an array or a variable, it returns its name.
+    """
     if isinstance(expr, c_ast.ArrayRef):
-        value, is_global = get_var_value(expr.subscript.name, gv, t_locals)
-        return "{}{}".format(expr.name, value), is_global
+        value, is_global = get_variable_value(expression.subscript.name, \
+                                         global_variables, thread_local_variables)
+        return "{}{}".format(expression.name, value), is_global
     if isinstance(expr, c_ast.ID):
-        return expr.name, False
+        return expression.name, False
     
-    assert False
+    assert False, "The expression parameter is not a variable or an array."
+
+
+
     
 def eval_bool_expr(expr, gv, t_locals):
     assert isinstance(expr, c_ast.BinaryOp), "Expression in assert is not binary."
@@ -135,7 +163,7 @@ def process_line(gv, tid, threads, ast, simulate):
             
         if function_name == "pthread_join":
             idx = node.args.exprs[0].subscript.name
-            idx_val = get_var_value(gv, t_locals, idx)
+            idx_val = get_variable_value(gv, t_locals, idx)
             thread_names = [name.split('-')[0] for (name, asts, loc) in threads[1:]]
             if str(idx_val) in thread_names:
                 t_asts.insert(0, node)
@@ -203,7 +231,7 @@ def process_line(gv, tid, threads, ast, simulate):
                 t_asts.insert(0, node)
                 
         if node.op == "+=":
-            old_value, is_global = get_var_value(gv, t_locals, var_name)
+            old_value, is_global = get_variable_value(gv, t_locals, var_name)
             value, is_global = get_value(node.rvalue, gv, t_locals)
             if not simulate:
                 gv, t_locals = set_var_value(gv, t_locals, var_name, \
@@ -215,22 +243,6 @@ def process_line(gv, tid, threads, ast, simulate):
 
     return gv, t, res, use_global
 
-def get_var_value(global_vars, local_vars, name):
-    if name in local_vars.keys():
-        return local_vars[name], False
-    if name in global_vars.keys():
-        return global_vars[name], True
-    assert(False)
-
-def set_var_value(global_vars, local_vars, name, value):
-    if name in local_vars.keys():
-        local_vars[name] = value
-        return global_vars, local_vars
-    if name in global_vars.keys():
-        global_vars[name] = value
-        return global_vars, local_vars
-    assert(False)
-    
     
 def execute(gv, ts, ast):
     # choose one thread at random

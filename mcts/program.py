@@ -99,17 +99,23 @@ class ProgramState(object):
     def reward(self, parent, action):
         global_variables, thread_states, abstract_syntax_tree, \
             is_counter_example_found, is_assert_found = self.pos
-        s = int(global_variables['sum']) # for sigma
-#        i = int(global_variables['i']) # for fibonacci
-#        j = int(global_variables['j']) # for fibonacci      
+#        s = int(global_variables['sum']) # for sigma
+        i = int(global_variables['i']) # for fibonacci
+        j = int(global_variables['j']) # for fibonacci      
         if is_assert_found:
-#            return max(j, i)/46368.0 # for fibonacci
-            return -(1.0/14.0) * s + 15.0/14.0 # for sigma
+            return max(j, i)/701408733.0 # for fibonacci
+#            return -(1.0/14.0) * s + 15.0/14.0 # for sigma
         else:
             return 0.0
 
     def is_terminal(self):
         return self.pos[4]
+
+    def is_counter_example(self):
+	return self.pos[3]
+
+    def print_program_state(self):
+	print "{}\n{}\n{}".format(self.pos[-1], self.pos[1], self.pos[4])
 
     def __eq__(self, other):
         return (self.pos == other.pos)
@@ -151,17 +157,21 @@ if __name__ == "__main__":
     while not state.is_terminal():
         state = state.advance_until_no_more_local_actions()
         root = StateNode(None, state)
-        print("{} {}".format(state.pos[0], state.pos[1]))
+        print("{} {} {} {}".format(state.pos[0], state.pos[1], 
+				   state.pos[3], state.pos[4]))
         if state.is_terminal():
             break
 
-#        number_of_iterations = 2500 # for fibonacci
-        number_of_iterations = 30 # for sigma
+        number_of_iterations = 400 # for fibonacci
+#        number_of_iterations = 30 # for sigma
         best_action, reward = mcts(root, number_of_iterations)
         print("\nBest action = {}, Reward = {}.".format(best_action, reward))
         state = state.perform(best_action)
 
-    if state.pos[3]:
+    print("{} {} {} {}".format(state.pos[0], state.pos[1], 
+			       state.pos[3], state.pos[4]))
+
+    if state.is_counter_example():
         print "\nCounter-example found :)"
     else:
         print "\nCounter-example NOT found :("    

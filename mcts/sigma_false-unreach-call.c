@@ -1,6 +1,9 @@
-typedef int pthread_t;
+//typedef int pthread_t;
 
-int array[16];
+#include <pthread.h>
+#include <assert.h>
+
+int array[11];
 int array_index=-1;
 int sum = 0;
 void *thread(void * arg)
@@ -14,20 +17,20 @@ int main()
 {
   int tid;
   tid = 0;
-  while (tid<16) {
+  while (tid<11) {
     array_index++;
     pthread_create(&t[tid], 0, thread, 0);
     tid++;
   }
   tid = 0;
-  while (tid<16) {
+  while (tid<11) {
     pthread_join(t[tid], 0);
     tid++;
   }
 
   tid = 0;
 
-  while (tid<16) {
+  while (tid<11) {
     sum += array[tid];
     tid++;
   }

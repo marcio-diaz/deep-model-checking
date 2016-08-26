@@ -72,15 +72,22 @@ def evaluate_boolean_expression(expression, global_variables, local_variables):
     assert isinstance(expression, c_ast.BinaryOp), "Expression in is not binary."
     
     if expression.op == "&&":
-        return (evaluate_boolean_expression(expression.left, global_variables, \
-                                            local_variables) \
-                and evaluate_boolean_expression(expression.right, global_variables, \
-                                                local_variables))
+        left_result, left_global = evaluate_boolean_expression(expression.left, 
+		                                   global_variables,
+                                                   local_variables) 
+        right_result, right_global = evaluate_boolean_expression(expression.right, 
+						   global_variables, 
+                                                   local_variables)
+	return (left_result and right_result), (left_global or right_global)
     elif expression.op == "||":
-        return (evaluate_boolean_expression(expression.left, global_variables,
-                                            local_variables) \
-                or evaluate_boolean_expression(expression.right, global_variables, \
-                                               local_variables))
+        left_result, left_global = evaluate_boolean_expression(expression.left, 
+		                                   global_variables,
+                                                   local_variables) 
+        right_result, right_global = evaluate_boolean_expression(expression.right, 
+						   global_variables, 
+                                                   local_variables)
+	return (left_result or right_result), (left_global or right_global)
+
     else:
         left_value, is_left_from_global = get_value(expression.left, \
                                                     global_variables, \
@@ -91,13 +98,12 @@ def evaluate_boolean_expression(expression, global_variables, local_variables):
         left_value = int(left_value)
         right_value = int(right_value)
         is_global = is_left_from_global or is_right_from_global
-        
         if expression.op == "==":
-            return left_value == right_value, is_global
+            return (left_value == right_value), is_global
         if expression.op == "<":
-            return left_value < right_value, is_global           
+            return (left_value < right_value), is_global           
         if expression.op == "!=":
-            return left_value != right_value, is_global            
+            return (left_value != right_value), is_global            
         assert False, "Binary operator {} is not ==, < or !=.".format(expression.op)
 
 
@@ -169,7 +175,8 @@ def process_line(global_variables, thread_id, thread_states, \
     is_counter_example_found = False
     is_assert_found = False
     
-    
+ #   print "thread {} state {}".format(thread_name, thread_variables)	
+	
     if isinstance(node, c_ast.Return):
         if len(thread_instructions) == 0:
             del thread_states[thread_id]
@@ -202,7 +209,7 @@ def process_line(global_variables, thread_id, thread_states, \
                                               thread_function_name)
             new_thread_name = get_variable(node.args.exprs[0].expr, global_variables,
                                            thread_variables)
-            thread_states.append(("{}".format(thread_function_name, new_thread_name),
+            thread_states.append(("{}-{}".format(thread_function_name, new_thread_name[0]),
                                   [function_node], {}))
             
         if function_name == "pthread_join":
@@ -224,13 +231,9 @@ def process_line(global_variables, thread_id, thread_states, \
                                                                   global_variables, 
                                                                   thread_variables)
             is_global = is_global or is_using_global
-
-            if not simulate:
-                is_counter_example_found = not result
-                is_assert_found = True
-            else:
-                is_assert_found = True                
-                is_counter_example_found = not result
+	    is_counter_example_found = (not result)
+	    is_assert_found = True
+            if simulate and is_global:
                 thread_instructions.insert(0, node)
                 
     if isinstance(node, c_ast.FuncDef):

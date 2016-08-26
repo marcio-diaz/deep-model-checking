@@ -6,7 +6,7 @@ void __VERIFIER_assert(int expression) { if (!expression) { ERROR: __VERIFIER_er
 
 int i=1, j=1;
 
-#define NUM 11
+#define NUM 21
 
 void *
 t1(void* arg)
@@ -41,7 +41,7 @@ main(int argc, char **argv)
   pthread_create(&id1, NULL, t1, NULL);
   pthread_create(&id2, NULL, t2, NULL);
 
-  assert(i < 46368 && j < 46368); 
+  assert(i < 701408733 && j < 701408733); 
 
   return 0;
 }

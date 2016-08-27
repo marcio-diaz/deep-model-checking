@@ -65,4 +65,5 @@ def _roll_out(state_node, stopping_criterion):
         action = random.choice(state.actions)
         parent = state
         state = parent.perform(action)
+    print "roll out, reward = {}".format(reward + state.reward(parent, action))
     return reward + state.reward(parent, action)

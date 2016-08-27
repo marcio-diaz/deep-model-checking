@@ -11,11 +11,14 @@ def transform(line):
         return ""
     elif line[0:15] == "void __VERIFIER":
         return ""
+    elif line[0:23] == "unsigned int __VERIFIER":
+        return ""
     
     return line
 
 def clean(source_code):
     cleaned_source_code = "typedef int pthread_t;"
+    cleaned_source_code += "typedef int pthread_mutex_t;"
     for line in source_code:
         cleaned_source_code += transform(line)
     return cleaned_source_code

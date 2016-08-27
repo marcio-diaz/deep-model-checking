@@ -11,7 +11,7 @@ extern void __VERIFIER_error() __attribute__ ((__noreturn__));
 unsigned int __VERIFIER_nondet_uint();
 static int top=0;
 static unsigned int arr[SIZE];
-pthread_mutex_t m;
+pthread_mutex_t m = 0;
 _Bool flag=FALSE;
 
 void error(void) 
@@ -48,7 +48,8 @@ int push(unsigned int *stack, int x)
   } 
   else 
   {
-    stack[get_top()] = x;
+    get_top();
+    stack[r] = x;
     inc_top();
   }
   return 0;
@@ -56,6 +57,7 @@ int push(unsigned int *stack, int x)
 
 int pop(unsigned int *stack)
 {
+  assert(top > 0);
   if (get_top()==0) 
   {
     printf("stack underflow\n");	
@@ -71,34 +73,39 @@ int pop(unsigned int *stack)
 
 void *t1(void *arg) 
 {
-  int i;
+  int i = 0;
   unsigned int tmp;
-
-  for(i=0; i<SIZE; i++)
+  int r = 0;
+  while (i<SIZE)
   {
     pthread_mutex_lock(&m);
     tmp = __VERIFIER_nondet_uint()%SIZE;
-    if (push(arr,tmp)==OVERFLOW)
+    push(arr,tmp);
+    if (r == OVERFLOW)
       error();
     flag=TRUE;
     pthread_mutex_unlock(&m);
+    i++;
   }
+  return;
 }
 
 void *t2(void *arg) 
 {
-  int i;
+  int i = 0;
 
-  for(i=0; i<SIZE; i++)
+  while(i<SIZE)
   {
     pthread_mutex_lock(&m);
-    if (flag)
+    if (flag != 0)
     {
       if (!(pop(arr)!=UNDERFLOW))
         error();
     }
     pthread_mutex_unlock(&m);
+    i++;
   }
+  return;
 }
 
 
@@ -113,7 +120,6 @@ int main(void)
 
   pthread_join(id1, NULL);
   pthread_join(id2, NULL);
-
   return 0;
 }
 

@@ -62,17 +62,20 @@ class ProgramState(object):
             is_counter_example_found, is_assert_found = self.pos
         simulate = True # Do not execute global instructions.
         thread_index = 0
-        while thread_index < len(thread_states):
+        while thread_index < len(thread_states) and not is_counter_example_found:
             is_global = False
-            while not is_global:
+            is_blocked = False
+            while not is_global and not is_counter_example_found \
+                  and not is_blocked:
                 if thread_index >= len(thread_states):
                     break
                 global_variables, thread_states, is_counter_example_found, \
-                    is_global, is_assert_found = process_line(global_variables,
-                                                              thread_index,
-                                                              thread_states, 
-                                                              abstract_syntax_tree,
-                                                              simulate)
+                    is_global, is_assert_found, is_blocked = \
+                                                process_line(global_variables,
+                                                             thread_index,
+                                                             thread_states, 
+                                                             abstract_syntax_tree,
+                                                             simulate)
             thread_index += 1
         return ProgramState((global_variables, thread_states,
                              abstract_syntax_tree, is_counter_example_found,
@@ -88,8 +91,9 @@ class ProgramState(object):
         global_variables_copy = global_variables.copy()
         simulate = False
         global_variables_copy, thread_states_copy, is_counter_example_found, \
-            is_global, is_assert_found = process_line(global_variables_copy,
-                                                      action, thread_states_copy,
+            is_global, is_assert_found, is_blocked = \
+                                        process_line(global_variables_copy,
+                                                     action, thread_states_copy,
                                                       abstract_syntax_tree, simulate)
         return ProgramState((global_variables_copy, thread_states_copy,
                              abstract_syntax_tree, is_counter_example_found,
@@ -158,19 +162,18 @@ if __name__ == "__main__":
                 backup=monte_carlo)
 
     # Execute the program until termination.
-    while not state.is_terminal():
+    while not state.is_terminal() and not state.is_counter_example():
         state = state.advance_until_no_more_local_actions()
         root = StateNode(None, state)
-        print("{} {} {} {} {}".format(state.pos[0]['top'],
-                                      state.pos[0]['flag'],
-                                      state.pos[1], 
-				      state.pos[3], state.pos[4]))
+        print("{} {} {} {}".format(state.pos[0],
+                                state.pos[1], 
+				state.pos[3], state.pos[4]))
         if state.is_terminal():
             break
 
 #        number_of_iterations = 400 # for fibonacci
 #        number_of_iterations = 30 # for sigma
-        number_of_iterations = 5
+        number_of_iterations = 1
         best_action, reward = mcts(root, number_of_iterations)
         print("\nBest action = {}, Reward = {}.".format(best_action, reward))
         state = state.perform(best_action)

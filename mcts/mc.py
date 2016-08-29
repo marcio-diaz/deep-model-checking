@@ -3,6 +3,7 @@ from itertools import product, chain
 from pycparser import c_parser, c_ast, parse_file, c_generator
 from sys import argv
 
+DEBUG = False
 
 def get_variable_value(global_variables, local_variables, variable_name):
     """ Given a name of a variable it returns its value.
@@ -13,6 +14,7 @@ def get_variable_value(global_variables, local_variables, variable_name):
     if variable_name in global_variables.keys():
         is_global = True
         return global_variables[variable_name], is_global
+
     assert False, "There is no variable with {} name.".format(variable_name)
 
     
@@ -44,9 +46,11 @@ def get_value(expression, global_variables, local_variables):
         idx_var_name, is_idx_global = get_variable_value(global_variables, 
                                                          local_variables, 
 							 expression.subscript.name)
-        var_name =  "{}{}".format(expression.name.name, idx_var_name)
-        value, is_var_global = get_variable_value(global_variables, 
-                                                  local_variables, var_name)
+#        var_name =  "{}{}".format(expression.name.name, idx_var_name)
+        variable = expression.name.name
+        array, is_var_global = get_variable_value(global_variables, 
+                                                  local_variables, variable)
+        value = array[idx_var_name]
         is_from_global_variable = (is_idx_global or is_var_global)
         return value, is_from_global_variable
     elif isinstance(expression, c_ast.BinaryOp):
@@ -65,7 +69,7 @@ def get_variable(expression, global_variables, local_variables):
     if isinstance(expression, c_ast.ArrayRef):
         value, is_global = get_variable_value(global_variables, local_variables, 
 						  expression.subscript.name)
-	return "{}{}".format(expression.name.name, value), is_global
+	return "{}".format(expression.name.name), is_global
     if isinstance(expression, c_ast.ID):
         return expression.name, False
     if isinstance(expression, c_ast.UnaryOp):
@@ -79,10 +83,13 @@ def evaluate_boolean_expression(expression, global_variables, local_variables):
     for literals. Also, it only support integers inside the expression. Maybe
     it would be interesting to add support for strings.
     """
-    assert isinstance(expression, c_ast.BinaryOp), \
-        "Expression {} is not binary.".format(expression)
     
-    if expression.op == "&&":
+    if expression.op == "!":
+        result, is_global = evaluate_boolean_expression(expression.expr,
+                                                        global_variables,
+                                                        local_variables)
+        return (not result), is_global
+    elif expression.op == "&&":
         left_result, left_global = evaluate_boolean_expression(expression.left, 
 		                                   global_variables,
                                                    local_variables) 
@@ -108,6 +115,9 @@ def evaluate_boolean_expression(expression, global_variables, local_variables):
                                                       local_variables)
         left_value = int(left_value)
         right_value = int(right_value)
+        if DEBUG:
+            print "Evaluating {} {} {}.".format(left_value, right_value,
+                                                expression.op)
         is_global = is_left_from_global or is_right_from_global
         if expression.op == "==":
             return (left_value == right_value), is_global
@@ -165,8 +175,11 @@ def array_declaration_to_variables(node, global_variables, local_variables):
     it returns a set of variables that represent the array.
     """
     value, is_global = get_value(node.dim, global_variables, local_variables)
-    return [(node.type.declname + str(x), 0) \
-            for x in range(int(value))]
+    return [(node.type.declname, [0 for i in range(int(value))])]
+#    print "Array declaration {}".format(node.type.declname)
+
+#    return [(node.type.declname + str(x), 0) \
+#            for x in range(int(value))]
 
 def simple_declaration_to_variables(node, global_variables, local_variables):
     """ Given a simple non-array declaration, it returns the variable and the value.
@@ -193,48 +206,94 @@ def process_line(global_variables, thread_id, thread_states, \
                  abstract_syntax_tree, simulate):
 
     thread_name, thread_instructions, thread_variables = thread_states[thread_id]
-#    print "thread {} state {} states {}".format(thread_name, thread_variables,
-#                                                thread_states) 
+
+
     node = thread_instructions.pop(0)
+    if DEBUG:
+        print "Processing in thread {}, id {} of {}.".format(thread_name,
+                                                             thread_id,
+                                                             len(thread_states))
+#        print "Instructions: {}".format([i for (n, i, v) in thread_states])
     is_global = False
     is_counter_example_found = False
     is_assert_found = False
-    
+    is_blocked = False
     
     if isinstance(node, c_ast.Return):
+        if DEBUG:
+            print "RETURN:",
         if len(thread_instructions) == 0:
+            if DEBUG:
+                print "ending thread."
             del thread_states[thread_id]
         else:
-            variable = node.expr.name
-            value, _ = get_variable_value(global_variables, thread_variables,
-                                          variable)
+            value, _ = get_value(node.expr, global_variables, thread_variables)
+            if DEBUG:
+                print "value {}.".format(value)
+            
             global_variables, thread_variables = set_variable_value(global_variables,
                                                                     thread_variables,
                                                                     'r', value)
 #            assert False, "Return from function is not handled yet"
             
     elif isinstance(node, c_ast.UnaryOp):
+        operator = node.op
         variable_name = node.expr.name
+        if DEBUG:
+            print "Operador unario {} en variable {}".format(operator, variable_name)
         value, is_var_global = get_variable_value(global_variables, \
                                                   thread_variables, variable_name)
         is_global = is_global or is_var_global
         if not simulate:
-            global_variables, thread_variables = set_variable_value(global_variables,
-                                                                    thread_variables,
-                                                                    variable_name, 
-                                                                    int(value) + 1)
+            if DEBUG:
+                print "setting it to {}".format(int(value)+1)
+            if operator != "p--":
+                global_variables, thread_variables = set_variable_value(global_variables,
+                                                                        thread_variables,
+                                                                        variable_name, 
+                                                                        int(value) + 1)
+                if DEBUG:
+                    print "setting it to {}".format(int(value)+1)
+
+            elif operator == "p--":
+                global_variables, thread_variables = set_variable_value(global_variables,
+                                                                        thread_variables,
+                                                                        variable_name, 
+                                                                        int(value) - 1)
+                if DEBUG:
+                    print "setting it to {}".format(int(value)-1)
+
+
+                
         elif not is_var_global:
-            global_variables, thread_variables = set_variable_value(global_variables,
-                                                                    thread_variables,
-                                                                    variable_name, 
-                                                                    int(value) + 1)
+            if DEBUG:
+                print "setting it to {}".format(int(value)+1)
+            if operator != "p--":
+                global_variables, thread_variables = set_variable_value(global_variables,
+                                                                        thread_variables,
+                                                                        variable_name, 
+                                                                        int(value) + 1)
+                if DEBUG:
+                    print "setting it to {}".format(int(value)+1)
+                
+            elif operator == "p--":
+                global_variables, thread_variables = set_variable_value(global_variables,
+                                                                        thread_variables,
+                                                                        variable_name, 
+                                                                        int(value) - 1)
+                if DEBUG:
+                    print "setting it to {}".format(int(value)-1)
+                
         else:
+            if DEBUG:
+                print "doing nothing."
+
             thread_instructions.insert(0, node)
                 
     elif isinstance(node, c_ast.FuncCall):
         function_name = node.name.name
-
-
+        if DEBUG:
+            print "Calling function {}.".format(function_name)
         if function_name == "pthread_create":
 
             expr_list = node.args.exprs            
@@ -247,14 +306,28 @@ def process_line(global_variables, thread_id, thread_states, \
                                   [function_node], {}))
             
         elif function_name == "pthread_join":
-            expr_list = node.args.exprs                        
-            index_number = get_value(node.args.exprs[0], global_variables, \
+            expr_list = node.args.exprs
+            index_number, _ = get_value(node.args.exprs[0], global_variables, \
                                      thread_variables)
-            thread_names = [name.split('-')[0] for (name, instructions, variables)
-                            in thread_states[1:]]
-            
-            if str(index_number) in thread_names:
-                thread_instructions.insert(0, node)
+            if index_number != None:
+                thread_names = [name.split('-')[0] for (name, instructions,variables)
+                                in thread_states[1:]]
+                if DEBUG:
+                    print "thread id {} thread names {}".format(index_number,
+                                                                thread_names)
+                if str(index_number) in thread_names:
+                    thread_instructions.insert(0, node)
+                    is_blocked = True
+            else: # we index by name of the variable
+                thread_id = node.args.exprs[0].name
+                thread_names = [name.split('-')[1] for (name, instructions,variables)
+                                in thread_states if not name == "main"]
+                if DEBUG:
+                    print "thread id {} thread names {}".format(thread_id,
+                                                                thread_names)
+                if thread_id in thread_names:
+                    thread_instructions.insert(0, node)
+                    is_blocked = True
 
         elif function_name == "pthread_exit":
             
@@ -282,12 +355,17 @@ def process_line(global_variables, thread_id, thread_states, \
             value, is_using_global = get_variable_value(global_variables,
                                                         thread_variables, variable)
             if int(value) == 0: # mutex unlocked
+                if DEBUG:
+                    print "Mutex unlocked."
                 global_variables, thread_variables = \
                                 set_variable_value(global_variables,
                                                    thread_variables,
                                                    variable, 1) # we lock it
             else: # mutex locked
+                if DEBUG:
+                    print "Mutex locked."
                 thread_instructions.insert(0, node) # we do nothing
+                is_blocked = True
         elif function_name == "pthread_mutex_unlock":
             expr_list = node.args.exprs                        
             variable, is_using_global = get_variable(expr_list[0], global_variables,
@@ -297,7 +375,9 @@ def process_line(global_variables, thread_id, thread_states, \
                                     set_variable_value(global_variables,
                                                        thread_variables,
                                                        variable, 0) # we lock it
-            
+        elif function_name == "printf":
+            pass
+        
         else: # any other function
             args = []
             if node.args:
@@ -306,13 +386,11 @@ def process_line(global_variables, thread_id, thread_states, \
             if node.args:
                 params = [p.name for p in function_node.decl.type.args.params]
                 for i, p in enumerate(params):
-                    print "args[i] = {}".format(args[i])
+
                     value, _ = get_variable_value(global_variables,
                                                   thread_variables, args[i])
-                    global_variables, thread_variables = \
-                                set_variable_value(global_variables,
-                                                   thread_variables,
-                                                   p, value)
+                    thread_variables[p] = value
+                    
             function_instructions = function_node.body.block_items[:]
             function_instructions.reverse()
             for instruction in function_instructions:
@@ -335,6 +413,9 @@ def process_line(global_variables, thread_id, thread_states, \
         result, is_global = evaluate_boolean_expression(node.cond,
                                                         global_variables,
                                                         thread_variables)
+        if DEBUG:
+            print "while {}.".format(result)
+        
 #        use_global = use_global or is_global // I don't care on fib example.
         if result:
             thread_instructions.insert(0, node)
@@ -351,7 +432,6 @@ def process_line(global_variables, thread_id, thread_states, \
         value, is_value_from_global = get_value(node.rvalue, global_variables, \
                                                 thread_variables)
         is_global = is_global or is_value_from_global
-        
         if node.op == "=":
             if not simulate or not is_global:
                 global_variables, thread_variables = \
@@ -382,12 +462,18 @@ def process_line(global_variables, thread_id, thread_states, \
         result, is_global = evaluate_boolean_expression(node.cond,
                                                         global_variables,
                                                         thread_variables)
+        if DEBUG:
+            print "IF",
         if result:
+            if DEBUG:
+                print "executing true branch."
             instructions = node.iftrue.block_items[:]
             instructions.reverse()
             for instruction in instructions:
                 thread_instructions.insert(0, instruction)
         elif node.iffalse:
+            if DEBUG:
+                print "executing false branch."
             instructions = node.iffalse.block_items[:]
             instructions.reverse()
             for instruction in instructions:
@@ -396,5 +482,5 @@ def process_line(global_variables, thread_id, thread_states, \
     else:
         assert False, "{} expression no recognized".format(node)
     return global_variables, thread_states, is_counter_example_found, is_global, \
-        is_assert_found
+        is_assert_found, is_blocked
 

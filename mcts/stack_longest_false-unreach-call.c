@@ -4,7 +4,7 @@ extern void __VERIFIER_error() __attribute__ ((__noreturn__));
 
 #define TRUE	  (1)
 #define FALSE	  (0) 
-#define SIZE	  (800)
+#define SIZE	  (8)
 #define OVERFLOW  (-1)
 #define UNDERFLOW (-2)
 
@@ -34,22 +34,19 @@ int get_top(void)
   return top;
 }
 
-int stack_empty(void)
-{
-  (top==0) ? TRUE : FALSE; 
-}
 
 int push(unsigned int *stack, int x)
 {
+  int r = 0;
+  assert(top != SIZE);
   if (top==SIZE) 
   {
-    printf("stack overflow\n");
     return OVERFLOW;
   } 
   else 
   {
     get_top();
-    stack[r] = x;
+    stack[top] = x;
     inc_top();
   }
   return 0;
@@ -57,16 +54,19 @@ int push(unsigned int *stack, int x)
 
 int pop(unsigned int *stack)
 {
-  assert(top > 0);
-  if (get_top()==0) 
+  int r = 0;
+  assert(0 < top);
+  get_top();
+  if (top==0) 
   {
-    printf("stack underflow\n");	
     return UNDERFLOW;
   } 
   else 
   {
     dec_top();
-    return stack[get_top()];  
+    get_top();
+    assert(top < SIZE);
+    return stack[top];  
   }
   return 0;
 }
@@ -81,8 +81,7 @@ void *t1(void *arg)
     pthread_mutex_lock(&m);
     tmp = __VERIFIER_nondet_uint()%SIZE;
     push(arr,tmp);
-    if (r == OVERFLOW)
-      error();
+    assert(r != OVERFLOW);
     flag=TRUE;
     pthread_mutex_unlock(&m);
     i++;
@@ -93,14 +92,15 @@ void *t1(void *arg)
 void *t2(void *arg) 
 {
   int i = 0;
-
+  int r = 0;
   while(i<SIZE)
   {
     pthread_mutex_lock(&m);
     if (flag != 0)
     {
-      if (!(pop(arr)!=UNDERFLOW))
-        error();
+      pop(arr);
+      assert(r!=UNDERFLOW);
+
     }
     pthread_mutex_unlock(&m);
     i++;

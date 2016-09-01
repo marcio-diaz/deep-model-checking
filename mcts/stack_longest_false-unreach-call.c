@@ -22,11 +22,13 @@ void error(void)
 void inc_top(void)
 {
   top++;
+  return;
 }
 
 void dec_top(void)
 {
   top--;
+  return;
 }
 
 int get_top(void)
@@ -68,7 +70,6 @@ int pop(unsigned int *stack)
     assert(top < SIZE);
     return stack[top];  
   }
-  return 0;
 }
 
 void *t1(void *arg) 
@@ -112,7 +113,7 @@ void *t2(void *arg)
 int main(void) 
 {
   pthread_t id1, id2;
-
+  int r = 0;
   pthread_mutex_init(&m, 0);
 
   pthread_create(&id1, NULL, t1, NULL);

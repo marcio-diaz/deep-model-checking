@@ -20,7 +20,11 @@ def tuplify(value):
         return value
 
 def thread_copy(t):
-    tt = t[0], t[1][:], t[2].copy()
+    frames_copy = []
+    for frame in t[2]:
+        frame_copy = (frame[0].copy(), frame[1].copy())
+        frames_copy.append(frame_copy)
+    tt = t[0], t[1][:], frames_copy
     return tt
     
 def threads_copy(ts):
@@ -149,7 +153,7 @@ if __name__ == "__main__":
 
     # Create the initial state of the program.
     global_variables = get_global_state(abstract_syntax_tree)
-    thread_states = [("main", [get_function_node(abstract_syntax_tree, "main")], {})]
+    thread_states = [("main", [get_function_node(abstract_syntax_tree, "main")], [])]
     counter_example_found = False
     is_assert_found = False
     state = ProgramState((global_variables, thread_states, \
@@ -163,20 +167,29 @@ if __name__ == "__main__":
 
     # Execute the program until termination.
     while not state.is_terminal() and not state.is_counter_example():
+        if DEBUG:
+            print "#"*10 + " Before executing all locals  " + "#"*10
         state = state.advance_until_no_more_local_actions()
+        if DEBUG:
+            print "#"*10 + " After executing all locals  " + "#"*10
+        if state.is_terminal() or state.is_counter_example():
+            break        
         root = StateNode(None, state)
-        print("{} {} {} {}".format(state.pos[0],
-                                state.pos[1], 
-				state.pos[3], state.pos[4]))
-        if state.is_terminal():
-            break
+        print("{}\n {}\n".format("*"*80, state.pos[0]))
+        for thread in state.pos[1]:
+            print "{} {} \n{}\n".format(thread[0], thread[1], thread[2])
+	print("\n{} {} \n{}".format(state.pos[3], state.pos[4], "*"*80))
 
 #        number_of_iterations = 400 # for fibonacci
 #        number_of_iterations = 30 # for sigma
         number_of_iterations = 1
         best_action, reward = mcts(root, number_of_iterations)
         print("\nBest action = {}, Reward = {}.".format(best_action, reward))
+        if DEBUG:
+            print "#"*10 + " Before performing action  " + "#"*10        
         state = state.perform(best_action)
+        if DEBUG:
+            print "#"*10 + " After performing action  " + "#"*10                
 
     print("{} {} {} {}".format(state.pos[0], state.pos[1], 
 			       state.pos[3], state.pos[4]))

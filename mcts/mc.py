@@ -238,8 +238,6 @@ def process_line(global_variables, thread_id, thread_states, \
         print "Processing in thread {}, id {} of {}.".format(thread_name,
                                                              thread_id,
                                                              len(thread_states))
-    if DEBUG:
-        print "Current frame = {}\n".format(current_frame)
 
 #        print "Instructions: {}".format([i for (n, i, v) in thread_states])
     is_global = False
@@ -266,7 +264,7 @@ def process_line(global_variables, thread_id, thread_states, \
                 set_variable_value(global_variables, prev_thread_variables,
                                    'r', None, value)
 
-            if len(thread_frames) - 1 > 0:
+            if len(thread_frames) > 0:
                 prev_thread_variables, _ = thread_frames[len(thread_frames)-1]
 
                 # We update the previous frame before returning.
@@ -289,8 +287,6 @@ def process_line(global_variables, thread_id, thread_states, \
                                                   variable_name, None)
         is_global = is_global or is_var_global
         if not simulate:
-            if DEBUG:
-                print "setting it to {}".format(int(value)+1)
             if operator != "p--":
                 global_variables, thread_variables = set_variable_value(global_variables,
                                                                         thread_variables,
@@ -446,7 +442,6 @@ def process_line(global_variables, thread_id, thread_states, \
 
                     value, _ = get_variable_value(global_variables,
                                                   thread_variables, args[i], None)
-#                    thread_variables[p] = value
                     new_thread_variables[p] = value
             else:
                 params = []
@@ -455,10 +450,17 @@ def process_line(global_variables, thread_id, thread_states, \
             for instruction in function_instructions:
                 thread_instructions.insert(0, instruction)
 
-                
+            args = []
+            params = []
+            if node.args:
+                for i in range(len(node.args.exprs)):
+                    if isinstance(function_node.decl.type.args.params[i].type, c_ast.PtrDecl):
+                        args.append(node.args.exprs[i].name)
+                        params.append(function_node.decl.type.args.params[i].name)
             # Add the new frame.
             new_args_to_params_map = dict(zip(args, params))
             new_frame = (new_thread_variables, new_args_to_params_map)
+
             thread_frames.append(new_frame)
         
     elif isinstance(node, c_ast.FuncDef):
@@ -497,6 +499,7 @@ def process_line(global_variables, thread_id, thread_states, \
         variable_name, subscript, is_global_variable = get_variable(node.lvalue,
                                                           global_variables,
                                                           thread_variables)
+
         is_global = is_global or is_global_variable
         value, is_value_from_global = get_value(node.rvalue, global_variables, \
                                                 thread_variables)
@@ -531,7 +534,7 @@ def process_line(global_variables, thread_id, thread_states, \
             value, is_global_variable = get_value(node.rvalue, global_variables, \
                                                   thread_variables)
             is_global = is_global or is_global_variable
-            if not simulate:
+            if not simulate or not is_global:
                 global_variables, thread_variables = \
                                             set_variable_value(global_variables,
                                                                thread_variables,
@@ -539,7 +542,7 @@ def process_line(global_variables, thread_id, thread_states, \
                                                                subs_value,
                                                                int(old_value) \
                                                                + int(value))
-            else:
+            elif is_global:
                 thread_instructions.insert(0, node)
     elif isinstance(node, c_ast.If):
         result, is_global = evaluate_boolean_expression(node.cond,
@@ -567,11 +570,12 @@ def process_line(global_variables, thread_id, thread_states, \
     else:
         assert False, "{} expression no recognized".format(node)
 
+
     if not isinstance(node, c_ast.Return) and not isinstance(node, c_ast.FuncCall):
         thread_frames.append(current_frame)
 
 
-        
+
 
     return global_variables, thread_states, is_counter_example_found, is_global, \
         is_assert_found, is_blocked

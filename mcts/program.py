@@ -22,7 +22,7 @@ def tuplify(value):
 def thread_copy(t):
     frames_copy = []
     for frame in t[2]:
-        frame_copy = (frame[0].copy(), frame[1].copy())
+        frame_copy = (copy.deepcopy(frame[0]), copy.deepcopy(frame[1]))
         frames_copy.append(frame_copy)
     tt = t[0], t[1][:], frames_copy
     return tt

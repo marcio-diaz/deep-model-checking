@@ -180,8 +180,8 @@ if __name__ == "__main__":
             print "{} {} \n{}\n".format(thread[0], thread[1], thread[2])
 	print("\n{} {} \n{}".format(state.pos[3], state.pos[4], "*"*80))
 
-#        number_of_iterations = 400 # for fibonacci
-        number_of_iterations = 30 # for sigma
+        number_of_iterations = 400 # for fibonacci
+#        number_of_iterations = 30 # for sigma
 #        number_of_iterations = 1 # stack
         best_action, reward = mcts(root, number_of_iterations)
         print("\nBest action = {}, Reward = {}.".format(best_action, reward))

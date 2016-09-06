@@ -6,6 +6,8 @@
 int array[11];
 int array_index=-1;
 int sum = 0;
+int t[11];
+
 void *thread(void * arg)
 {
   array[array_index] = 1;
@@ -24,7 +26,7 @@ int main()
   }
   tid = 0;
   while (tid<11) {
-    pthread_join(t[tid], 0);
+    pthread_join(&t[tid], 0);
     tid++;
   }
 

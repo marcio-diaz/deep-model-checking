@@ -92,7 +92,7 @@ class ProgramState(object):
         assert action < len(thread_states), "There is no thread corresponding" \
             " to action {}".format(action)
         thread_states_copy = threads_copy(thread_states)
-        global_variables_copy = global_variables.copy()
+        global_variables_copy = copy.deepcopy(global_variables)
         simulate = False
         global_variables_copy, thread_states_copy, is_counter_example_found, \
             is_global, is_assert_found, is_blocked = \
@@ -107,15 +107,15 @@ class ProgramState(object):
     def reward(self, parent, action):
         global_variables, thread_states, abstract_syntax_tree, \
             is_counter_example_found, is_assert_found = self.pos
-#        s = int(global_variables['sum']) # for sigma
+        s = int(global_variables['sum']) # for sigma
 #        i = int(global_variables['i']) # for fibonacci
 #        j = int(global_variables['j']) # for fibonacci
-        top = int(global_variables['top']) # for stack
+#        top = int(global_variables['top']) # for stack
 
         if is_assert_found:
 #            return max(j, i)/701408733.0 # for fibonacci
-#            return -(1.0/14.0) * s + 15.0/14.0 # for sigma
-            return (800.0-top)/800.0 # for stack        
+            return -(1.0/14.0) * s + 15.0/14.0 # for sigma
+#            return (800.0-top)/800.0 # for stack        
         else:
             return 0.0
 
@@ -181,8 +181,8 @@ if __name__ == "__main__":
 	print("\n{} {} \n{}".format(state.pos[3], state.pos[4], "*"*80))
 
 #        number_of_iterations = 400 # for fibonacci
-#        number_of_iterations = 30 # for sigma
-        number_of_iterations = 1
+        number_of_iterations = 30 # for sigma
+#        number_of_iterations = 1 # stack
         best_action, reward = mcts(root, number_of_iterations)
         print("\nBest action = {}, Reward = {}.".format(best_action, reward))
         if DEBUG:

@@ -73,11 +73,39 @@ def get_value(expression, global_variables, local_variables):
         assert expression.left.name.name == "__VERIFIER_nondet_uint"
         assert expression.op == "%"
         num = randrange(0, 1000000)
-        mod, _ = get_value(expression.right, global_variables, local_variables)
+        mod, _ = get_value(expression.right, global_variables,
+                           local_variables)
         return num % int(mod), False
     assert False, "The expression parameter is {}, not a constant, " \
         "variable or array.".format(expression)
 
+
+
+def get_thread_id(expression, global_variables, local_variables):
+    """ Given the expression for the first argument on a call to
+    pthread_create it return the thread id
+    """
+    if isinstance(expression, c_ast.ArrayRef): # used by sigma
+        value, _ = get_variable_value(global_variables, 
+                                      local_variables, 
+			              expression.subscript.name,
+                                      None)
+        variable = expression.name.name
+        
+        return "{}-{}".format(variable, str(value))
+
+
+    elif isinstance(expression, c_ast.ID): # used for stack
+        variable = expression.name
+        value, _ = get_variable_value(global_variables, 
+                                      local_variables,
+                                      variable, None)
+        
+        return "{}".format(variable)
+
+    
+
+    assert False, "Parameter for thread creation not recognized, is {}".format(expression)
     
 def get_variable(expression, global_variables, local_variables):
     """ Given an array or a variable, it returns its name.
@@ -347,35 +375,28 @@ def process_line(global_variables, thread_id, thread_states, \
             thread_function_name = node.args.exprs[2].name
             function_node = get_function_node(abstract_syntax_tree,
                                               thread_function_name)
-            new_thread_name = get_variable(node.args.exprs[0].expr, global_variables,
-                                           thread_variables)
+
+
+            new_thread_name = get_thread_id(node.args.exprs[0].expr,
+                                            global_variables,
+                                            thread_variables)
+            
             thread_states.append(("{}-{}".format(thread_function_name,
-                                                 new_thread_name[0]),
+                                                 new_thread_name),
                                   [function_node], []))
             
         elif function_name == "pthread_join":
             expr_list = node.args.exprs
-            index_number, _ = get_value(node.args.exprs[0], global_variables, \
-                                     thread_variables)
-            if index_number != None:
-                thread_names = [name.split('-')[0] for (name, instructions,variables)
-                                in thread_states[1:]]
-                if DEBUG:
-                    print "thread id {} thread names {}".format(index_number,
-                                                                thread_names)
-                if str(index_number) in thread_names:
-                    thread_instructions.insert(0, node)
-                    is_blocked = True
-            else: # we index by name of the variable
-                thread_id = node.args.exprs[0].name
-                thread_names = [name.split('-')[1] for (name, instructions,variables)
-                                in thread_states if not name == "main"]
-                if DEBUG:
-                    print "thread id {} thread names {}".format(thread_id,
-                                                                thread_names)
-                if thread_id in thread_names:
-                    thread_instructions.insert(0, node)
-                    is_blocked = True
+            name_id = get_thread_id(node.args.exprs[0].expr, global_variables, \
+                                    thread_variables)
+            thread_names = [name.split('-')[0] for (name, instructions,variables)
+                            in thread_states[1:]]
+            if DEBUG:
+                print "thread id {} thread names {}".format(index_number,
+                                                            thread_names)
+            if str(name_id) in thread_names:
+                thread_instructions.insert(0, node)
+                is_blocked = True
 
         elif function_name == "pthread_exit":
             

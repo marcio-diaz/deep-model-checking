@@ -7,6 +7,8 @@ def transform(line):
         return "int {} = {};".format(variable, value)
     elif line[0:8] == "#include":
         return ""
+    elif line[0:1] == "/":
+        return ""
     elif line[0:6] == "extern":
         return ""
     elif line[0:15] == "void __VERIFIER":

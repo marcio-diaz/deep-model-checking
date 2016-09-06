@@ -43,7 +43,7 @@ def random_terminal_roll_out(state_node):
     return _roll_out(state_node, stop_terminal)
 
 
-def random_k_terminal_roll_out(state_node, k=1):
+def random_k_terminal_roll_out(state_node, k=3):
 
     def stop_terminal(state):
         return state.is_terminal()

@@ -1,3 +1,4 @@
+from __future__ import division
 from mcts.mcts import *
 from mcts.tree_policies import *
 from mcts.default_policies import *
@@ -11,6 +12,55 @@ from mc import *
 import copy
 from clean_code import clean
 from math import fabs
+from itertools import chain
+
+def compute_reward(reward_functions, global_variables):
+    rewards = []
+    for rf, var_name in reward_functions:
+        r = rf(global_variables[var_name])
+        rewards.append(r)
+    return rewards
+    
+
+def to_reward_function(binary_operator):
+    assert isinstance(binary_operator, c_ast.BinaryOp)
+    big_num = 1000.0
+    if binary_operator.op == "!=":
+        var_name = binary_operator.left.name
+        value = float(binary_operator.right.value)
+        func = lambda x: abs(big_num - float(x)) / big_num
+        return (func, var_name),
+    if binary_operator.op == "&&":
+        func = to_reward_function(binary_operator.left)
+        func += to_reward_function(binary_operator.right)
+        return func
+    if binary_operator.op == "<":
+        var_name = binary_operator.left.name
+        value = float(binary_operator.right.value)
+        func = lambda x: 1.0 - (value - float(x)) / value
+        return (func, var_name),
+    assert False, "Binary operator {} not recognized.".format(binary_operator.op)
+    
+
+def get_reward_functions(assert_nodes):
+    reward_functions = tuple()
+    for node in assert_nodes:
+        rf = to_reward_function(node.args.exprs[0])
+        reward_functions += rf
+    return reward_functions
+
+def get_assert_nodes(abstract_syntax_tree):
+    assert_nodes = []
+    for node in abstract_syntax_tree:
+        if isinstance(node, c_ast.FuncDef):
+            instructions = node.body.block_items[:]
+            for inst in instructions:
+                assert_nodes.extend(get_assert_nodes([inst]))
+        elif isinstance(node, c_ast.FuncCall):
+            function_name = node.name.name
+            if function_name == "assert":
+                assert_nodes.append(node)
+    return assert_nodes
 
 def tuplify(value):
     if isinstance(value, list) or isinstance(value, tuple) \
@@ -51,7 +101,7 @@ class ProgramState(object):
     def __init__(self, pos):
         self.pos = pos
         global_variables, thread_states, abstract_syntax_tree, \
-            is_counter_example_found, is_assert_found = pos
+            is_counter_example_found, is_assert_found, reward_functions = pos
         thread_states = [t for t in thread_states if t != None]
         # We have one action for each thread.
         self.actions = [a for a in range(len(thread_states))]
@@ -63,7 +113,7 @@ class ProgramState(object):
         that use global state.
         """
         global_variables, thread_states, abstract_syntax_tree, \
-            is_counter_example_found, is_assert_found = self.pos
+            is_counter_example_found, is_assert_found, reward_functions = self.pos
         simulate = True # Do not execute global instructions.
         thread_index = 0
         while thread_index < len(thread_states) and not is_counter_example_found:
@@ -83,12 +133,12 @@ class ProgramState(object):
             thread_index += 1
         return ProgramState((global_variables, thread_states,
                              abstract_syntax_tree, is_counter_example_found,
-                             is_assert_found))
+                             is_assert_found, reward_functions))
 
 
     def perform(self, action):
         global_variables, thread_states, abstract_syntax_tree, \
-            is_counter_example_found, is_assert_found = self.pos
+            is_counter_example_found, is_assert_found, reward_functions = self.pos
         assert action < len(thread_states), "There is no thread corresponding" \
             " to action {}".format(action)
         thread_states_copy = threads_copy(thread_states)
@@ -101,20 +151,23 @@ class ProgramState(object):
                                                       abstract_syntax_tree, simulate)
         return ProgramState((global_variables_copy, thread_states_copy,
                              abstract_syntax_tree, is_counter_example_found,
-                             is_assert_found))
+                             is_assert_found, reward_functions))
 
     
     def reward(self, parent, action):
         global_variables, thread_states, abstract_syntax_tree, \
-            is_counter_example_found, is_assert_found = self.pos
-        s = int(global_variables['sum']) # for sigma
+            is_counter_example_found, is_assert_found, reward_functions = self.pos
+#        s = int(global_variables['sum']) # for sigma
 #        i = int(global_variables['i']) # for fibonacci
 #        j = int(global_variables['j']) # for fibonacci
 #        top = int(global_variables['top']) # for stack
 
         if is_assert_found:
+            rewards = compute_reward(reward_functions, global_variables)
+#            print rewards
+            return max(rewards)
 #            return max(j, i)/701408733.0 # for fibonacci
-            return -(1.0/14.0) * s + 15.0/14.0 # for sigma
+#            return -(1.0/14.0) * s + 15.0/14.0 # for sigma
 #            return (800.0-top)/800.0 # for stack        
         else:
             return 0.0
@@ -147,9 +200,15 @@ if __name__ == "__main__":
     # and change 'for' loops to 'while' loops.
     cleaned_source_code = clean(source_code)
 
+
+    
     # Parse clean code.
     parser = c_parser.CParser()
     abstract_syntax_tree = parser.parse(cleaned_source_code)
+
+    # We get the reward function.
+    assert_nodes = get_assert_nodes(abstract_syntax_tree.ext)
+    reward_functions = get_reward_functions(assert_nodes)
 
     # Create the initial state of the program.
     global_variables = get_global_state(abstract_syntax_tree)
@@ -158,7 +217,7 @@ if __name__ == "__main__":
     is_assert_found = False
     state = ProgramState((global_variables, thread_states, \
                           abstract_syntax_tree, counter_example_found,
-                          is_assert_found))
+                          is_assert_found, reward_functions))
 
     # Instantiate Monte Carlo Tree Search algorithm.
     mcts = MCTS(tree_policy=UCB1(c=1.41),

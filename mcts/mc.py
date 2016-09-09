@@ -5,6 +5,9 @@ from sys import argv
 
 DEBUG = False
 
+
+
+
 def get_variable_value(global_variables, local_variables, variable_name, subscript):
     """ Given a name of a variable it returns its value.
     """
@@ -387,7 +390,7 @@ def process_line(global_variables, thread_id, thread_states, \
             
         elif function_name == "pthread_join":
             expr_list = node.args.exprs
-            name_id = get_thread_id(node.args.exprs[0].expr, global_variables, \
+            name_id = get_thread_id(node.args.exprs[0], global_variables, \
                                     thread_variables)
             thread_names = [name.split('-')[0] for (name, instructions,variables)
                             in thread_states[1:]]

@@ -26,7 +26,7 @@ int main()
   }
   tid = 0;
   while (tid<11) {
-    pthread_join(&t[tid], 0);
+    pthread_join(t[tid], 0);
     tid++;
   }
 

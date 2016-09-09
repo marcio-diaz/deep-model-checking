@@ -40,7 +40,7 @@ int get_top(void)
 int push(unsigned int *stack, int x)
 {
   int r = 0;
-  assert(top != SIZE);
+  assert(top != 8);
   if (top==SIZE) 
   {
     return OVERFLOW;
@@ -57,7 +57,7 @@ int push(unsigned int *stack, int x)
 int pop(unsigned int *stack)
 {
   int r = 0;
-  assert(0 < top);
+  assert(top != 0);
   get_top();
   if (top==0) 
   {
@@ -67,7 +67,6 @@ int pop(unsigned int *stack)
   {
     dec_top();
     get_top();
-    assert(top < SIZE);
     return stack[top];  
   }
 }
@@ -80,9 +79,8 @@ void *t1(void *arg)
   while (i<SIZE)
   {
     pthread_mutex_lock(&m);
-    tmp = __VERIFIER_nondet_uint()%SIZE;
+    tmp = __VERIFIER_nondet_uint() % SIZE;
     push(arr,tmp);
-    assert(r != OVERFLOW);
     flag=TRUE;
     pthread_mutex_unlock(&m);
     i++;
@@ -100,7 +98,6 @@ void *t2(void *arg)
     if (flag != 0)
     {
       pop(arr);
-      assert(r!=UNDERFLOW);
 
     }
     pthread_mutex_unlock(&m);
